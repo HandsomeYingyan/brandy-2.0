@@ -19,7 +19,9 @@
 #if defined(CONFIG_MACH_SUN8IW18) ||\
     defined(CONFIG_MACH_SUN50IW9) ||\
     defined(CONFIG_MACH_SUN50IW10) ||\
-    defined(CONFIG_MACH_SUN8IW19)
+    defined(CONFIG_MACH_SUN8IW19) ||\
+	defined(CONFIG_MACH_SUN20IW1) ||\
+	defined(CONFIG_MACH_SUN8IW20)
 #define DMAC_CFG_TYPE_SPI0 (22)
 #define DMAC_CFG_SRC_TYPE_NAND (5)
 #elif defined(CONFIG_MACH_SUN8IW15)
@@ -28,6 +30,12 @@
 #elif defined(CONFIG_MACH_SUN8IW7)
 #define DMAC_CFG_TYPE_SPI0 (24)
 #define DMAC_CFG_SRC_TYPE_NAND (5)
+#elif defined(CONFIG_MACH_SUN50IW11) ||\
+	defined(CONFIG_MACH_SUN50IW12)
+
+#define DMAC_CFG_TYPE_SPI0 (22)
+#define DMAC_CFG_SRC_TYPE_NAND (10)
+
 #endif
 
 /* DMA base config  */
@@ -78,7 +86,9 @@ typedef struct {
 #if defined(CONFIG_MACH_SUN50IW3) || defined(CONFIG_MACH_SUN8IW18) ||          \
 	defined(CONFIG_MACH_SUN50IW9) || defined(CONFIG_MACH_SUN8IW16) ||      \
 	defined(CONFIG_MACH_SUN8IW19) || defined(CONFIG_MACH_SUN50IW10) ||     \
-	defined(CONFIG_MACH_SUN8IW15) || defined(CONFIG_MACH_SUN8IW7)
+	defined(CONFIG_MACH_SUN8IW15) || defined(CONFIG_MACH_SUN8IW7) ||	\
+	defined(CONFIG_MACH_SUN50IW11) || defined(CONFIG_MACH_SUN50IW12) ||	\
+	defined(CONFIG_MACH_SUN20IW1) || defined(CONFIG_MACH_SUN8IW20)
 typedef struct {
 	unsigned int src_drq_type : 6;
 	unsigned int src_burst_length : 2;

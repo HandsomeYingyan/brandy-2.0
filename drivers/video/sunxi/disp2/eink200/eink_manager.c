@@ -9,8 +9,14 @@
 #include "include/eink_driver.h"
 #include "include/eink_sys_source.h"
 #include "lowlevel/eink_reg.h"
+#include <asm/arch/gic.h>
 
 static struct eink_manager *g_eink_manager;
+volatile unsigned int g_finish;
+
+#ifdef CONFIG_PMIC_TPS65185
+extern int tps65185_vcom_set(int vcom_mv);
+#endif
 
 #ifdef VIRTUAL_REGISTER
 static void *test_preg_base;
@@ -20,6 +26,155 @@ static void *test_vreg_base;
 struct eink_manager *get_eink_manager(void)
 {
 	return g_eink_manager;
+}
+
+#if 0
+int get_vcom_file_from_private_part(char **vcom_argv)
+{
+	int ret = 0;
+	int partno = -1;
+
+	ret = script_parser_fetch("waveform_feature", "vcom_path",
+				  (int *)vcom_argv[4], 16);
+	if ((ret < 0) || (strlen(vcom_argv[4]) == 0)) {
+		printf("sunxi_waveform: vcom_path is not set, use default\n");
+		return -1;
+	}
+
+	partno = sunxi_partition_get_partno_byname("private");
+	printf("get_vcom_file_from_private_part partno === %d\n", partno);
+	if (partno < 0) {
+		printf("get_vcom_file_from_private_part failed\n");
+		return -1;
+	}
+	sprintf(vcom_argv[2], "%x:0", partno);
+	printf("use vcom.bin from private partation\n");
+
+	return 0;
+}
+#endif
+
+static int atoi_float(char *buf)
+{
+	int num = 0;
+	int i = 0;
+	int point_pos = -1;
+	int pow = 0;
+
+	while (buf[i] != '\0') {
+		if (buf[i] >= '0' && buf[i] <= '9')	{
+			if ((point_pos < 0) || ((point_pos >= 0) && ((point_pos + 4) > i))) {
+				num = num * 10 + (buf[i] - '0');
+			} else {
+				//drop the left char
+				break;
+			}
+		}
+
+		if (buf[i] == '.') {
+			point_pos = i;
+		}
+		i++;
+	}
+
+	//auto *1000
+	if ((point_pos >= 0) && ((point_pos + 4) > i)) {
+		pow = (point_pos + 4 - i);
+		while (pow > 0) {
+			num = num * 10;
+			pow--;
+		}
+	}
+
+	if (buf[0] == '-')
+		num = num * (-1);
+
+	return num;
+}
+
+static int __get_vcom_from_file(char *path, int *vcom)
+{
+	char *vcombuf = NULL;
+	char vcom_value[5] = {0};
+	char vcom_path[32] = {0};
+	char *vcom_argv[6] = { "fatload", "sunxi_flash", "0:0", "00000000", vcom_path, NULL };
+	int partno = -1;
+	int nVcomVoltage = 0;
+	int ret = 0;
+
+	if ((!vcom) || (!path)) {
+		printf("[%s]:input param is null\n", __func__);
+		return -1;
+	}
+	partno = sunxi_partition_get_partno_byname("bootloader");
+	if (partno < 0) {
+		partno = sunxi_partition_get_partno_byname("boot-resource");
+		if (partno < 0) {
+			printf("[%s]:Get bootloader or boot-resource partition number fail!\n", __func__);
+		} else
+			sprintf(vcom_argv[2], "0:%x", partno);
+	}
+
+	vcombuf = (char *)malloc_aligned(64, ARCH_DMA_MINALIGN);
+	memset(vcombuf, 0, 64);
+	sprintf(vcom_argv[3], "%lx", (unsigned long)vcombuf);
+
+	memset(vcom_path, 0, 32);
+	strcpy(vcom_path, path);
+
+	EINK_INFO_MSG("vcom_path === %s\n", path);
+
+	if (do_fat_fsload(0, 0, 5, vcom_argv)) {
+		printf("read VCOM file from  %s failed!\n", vcom_argv[4]);
+		return -1;
+	} else{
+		EINK_INFO_MSG("read VCOM file from  %s succeed\n", vcom_argv[4]);
+	}
+
+	memcpy(vcom_value, vcombuf, 5);
+	nVcomVoltage = atoi_float(vcombuf);
+	*vcom = nVcomVoltage;
+
+	if (vcombuf) {
+		free_aligned(vcombuf);
+		vcombuf = NULL;
+	}
+
+	EINK_INFO_MSG("get nVcomVoltage = %d\n", nVcomVoltage);
+
+	return ret;
+}
+
+static int eink_set_vcom_voltage(int vcom)
+{
+	int ret = -1;
+#ifdef CONFIG_PMIC_TPS65185
+	ret = tps65185_vcom_set(vcom);		//unit is mv
+	if (ret != 0) {
+		printf("%s: set vcom fail, ret=%d\n", __func__, ret);
+	}
+#else
+	//other method
+#endif
+
+	return ret;
+}
+
+#define DEFAULT_VCOM_VOLTAGE (-1550)
+static int get_vcom_config_value(char *path)
+{
+	int vcom = 0;
+	int ret  = -1;
+
+	EINK_INFO_MSG("[%s]: path = %s\n", __func__, path);
+	ret = __get_vcom_from_file(path, &vcom);
+	if (ret != 0) {
+		printf("fail to get vcom from file, use default value\n");
+		vcom = DEFAULT_VCOM_VOLTAGE;
+	}
+	eink_set_vcom_voltage(vcom);
+	printf("%s: vcom value is %d mV\n", __func__, vcom);
+	return ret;
 }
 
 static int detect_fresh_thread(struct eink_manager *eink_mgr, struct eink_img *cur_img)
@@ -40,7 +195,6 @@ static int detect_fresh_thread(struct eink_manager *eink_mgr, struct eink_img *c
 		pr_err("%s: eink manager is not initial\n", __func__);
 		return -1;
 	}
-
 	pipe_mgr = eink_mgr->pipe_mgr;
 	index_mgr = eink_mgr->index_mgr;
 
@@ -55,9 +209,15 @@ static int detect_fresh_thread(struct eink_manager *eink_mgr, struct eink_img *c
 	memcpy(&pipe_info.upd_win, &cur_img->upd_win, sizeof(struct upd_win));
 	pipe_info.upd_mode = cur_img->upd_mode;
 
-	eink_get_wf_data(pipe_info.upd_mode, temperature,
-			 &pipe_info.total_frames, &pipe_info.wav_paddr,
-			&pipe_info.wav_vaddr);/* 还没想好结果 fix me */
+#ifdef DRIVER_REMAP_WAVEFILE
+		eink_get_wf_data(pipe_info.upd_mode, temperature,
+				&pipe_info.total_frames, &pipe_info.wav_paddr,
+				&pipe_info.wav_vaddr);/* 还没想好结果 fix me */
+#else
+		get_waveform_data(pipe_info.upd_mode, temperature,
+				&pipe_info.total_frames, &pipe_info.wav_paddr,
+				&pipe_info.wav_vaddr);
+#endif
 
 	EINK_INFO_MSG("temp=%d, mode=0x%x, total=%d, waveform_paddr=0x%x, waveform_vaddr=0x%x\n",
 		      temperature, pipe_info.upd_mode,
@@ -109,6 +269,9 @@ static int detect_fresh_thread(struct eink_manager *eink_mgr, struct eink_img *c
 
 	/* 释放buf */
 	/* 待补充 */
+	while (g_finish == 0) {
+	}
+	pr_info("[%s] finish!\n", __func__);
 
 #ifdef REGISTER_PRINT
 	reg_base = eink_get_reg_base();
@@ -125,6 +288,8 @@ int eink_update_image(struct eink_manager *eink_mgr, struct eink_img *cur_img)
 {
 	int ret = 0;
 
+	char path[32] = {0};
+
 	EINK_INFO_MSG("func input!\n");
 
 	if (eink_mgr->waveform_init_flag == false) {
@@ -135,6 +300,10 @@ int eink_update_image(struct eink_manager *eink_mgr, struct eink_img *cur_img)
 		} else
 			eink_mgr->waveform_init_flag = true;
 	}
+
+	strcpy(path, "wavefile\\vcom.bin");
+	eink_mgr->vcom_voltage = get_vcom_config_value(path);
+
 	ret = eink_mgr->eink_mgr_enable(eink_mgr);
 	if (ret) {
 		pr_err("enable eink mgr failed, ret = %d\n", ret);
@@ -199,22 +368,16 @@ int pipe_finish_irq_handler(struct pipe_manager *mgr)
 	return 0;
 }
 
-static int eink_intterupt_proc(int irq, void *parg)
+int eink_intterupt_proc(int irq, void *parg)
 {
 	struct eink_manager *eink_mgr = NULL;
-	struct pipe_manager *pipe_mgr = NULL;
+	struct pipe_manager *pipe_mgr = get_pipeline_manager();
 	int reg_val = -1;
 	unsigned int ee_fin, upd_pic_accept, upd_pic_fin, pipe_fin;
 
-	eink_mgr = (struct eink_manager *)parg;
-	if (!eink_mgr) {
-		pr_err("%s:mgr is NULL!\n", __func__);
-		return EINK_IRQ_RETURN;
-	}
-
-	pipe_mgr = eink_mgr->pipe_mgr;
-	if (!pipe_mgr) {
-		pr_err("[%s]:pipe mgr is NULL\n", __func__);
+	eink_mgr = g_eink_manager;
+	if ((!eink_mgr) && (!pipe_mgr)) {
+		pr_err("%s:eink mgr or pipe mgr is NULL!\n", __func__);
 		return EINK_IRQ_RETURN;
 	}
 
@@ -236,11 +399,13 @@ static int eink_intterupt_proc(int irq, void *parg)
 
 	if (ee_fin == 0x1000000) {
 		eink_mgr->ee_finish = true;
-		printf("EINK Fresh Finish!\n");
+		g_finish = 1;
+		printf("\n EINK Fresh Finish!\n");
 	}
 
 	if (pipe_fin == 0x1000) {
 		pipe_finish_irq_handler(pipe_mgr);
+		eink_mgr_exit(eink_mgr);
 	}
 
 	return EINK_IRQ_RETURN;
@@ -459,6 +624,13 @@ int eink_clk_enable(struct eink_manager *mgr)
 
 	EINK_INFO_MSG("panel_freq = %lu\n", panel_freq);
 
+	if (mgr->panel_clk_parent) {
+		ret = clk_set_rate(mgr->panel_clk_parent, panel_freq);
+		if (ret) {
+			pr_err("%s:set panel parent freq failed!\n", __func__);
+			return -1;
+		}
+	}
 	if (mgr->panel_clk) {
 		ret = clk_set_rate(mgr->panel_clk, panel_freq);
 		if (ret) {
@@ -475,6 +647,16 @@ int eink_clk_enable(struct eink_manager *mgr)
 	}
 
 	return ret;
+}
+
+void eink_clk_disable(struct eink_manager *mgr)
+{
+	if (mgr->ee_clk)
+		clk_disable(mgr->ee_clk);
+
+	if (mgr->panel_clk)
+		clk_disable(mgr->panel_clk);
+	return;
 }
 
 s32 eink_get_clk_rate(struct clk *device_clk)
@@ -574,11 +756,13 @@ s32 eink_mgr_disable(struct eink_manager *eink_mgr)
 	int ret = 0;
 
 	struct pipe_manager *pipe_mgr = NULL;
+	struct timing_ctrl_manager *timing_cmgr = NULL;
 
 	pipe_mgr = eink_mgr->pipe_mgr;
+	timing_cmgr = eink_mgr->timing_ctrl_mgr;
 
-	if (!pipe_mgr) {
-		pr_err("%s:pipe manager is not initial\n", __func__);
+	if ((!pipe_mgr) || (!timing_cmgr)) {
+		pr_err("%s:pipe or timing ctrl manager is not initial\n", __func__);
 		return -1;
 	}
 
@@ -588,6 +772,11 @@ s32 eink_mgr_disable(struct eink_manager *eink_mgr)
 		return 0;
 	}
 
+	ret = timing_cmgr->disable(timing_cmgr);
+	if (ret) {
+		pr_err("%s:fail to enable timing ctrl mgr", __func__);
+		goto timing_enable_fail;
+	}
 	ret = pipe_mgr->pipe_mgr_disable();
 	if (ret) {
 		pr_err("fail to disable pipe(%d)\n", ret);
@@ -600,6 +789,8 @@ s32 eink_mgr_disable(struct eink_manager *eink_mgr)
 	return 0;
 
 pipe_disable_fail:
+	timing_cmgr->enable(timing_cmgr);
+timing_enable_fail:
 	eink_mgr->enable_flag = true;
 	mutex_unlock(&eink_mgr->enable_lock);
 
@@ -649,6 +840,9 @@ int eink_mgr_init(struct init_para *para)
 
 	eink_mgr->ee_clk = para->ee_clk;
 	eink_mgr->panel_clk = para->panel_clk;
+	eink_mgr->panel_clk_parent = clk_get_parent(eink_mgr->panel_clk);
+	if (!eink_mgr->panel_clk_parent)
+		printf("[%s]: panel clk parent is NULL\n", __func__);
 
 #ifdef REGISTER_PRINT
 	para->ee_reg_base = (uintptr_t)malloc(0x1ffff);
@@ -658,6 +852,7 @@ int eink_mgr_init(struct init_para *para)
 
 	irq_no = para->ee_irq_no;
 	irq_install_handler(irq_no, (interrupt_handler_t *)eink_intterupt_proc, (void *)eink_mgr);
+	irq_enable(irq_no);
 
 	mutex_init(&eink_mgr->enable_lock);
 
@@ -681,4 +876,16 @@ int eink_mgr_init(struct init_para *para)
 eink_mgr_err:
 	free(eink_mgr);
 	return ret;
+}
+
+void eink_mgr_exit(struct eink_manager *mgr)
+{
+	if (!mgr) {
+		pr_err("[%s]mgr is NULL!\n", __func__);
+		return;
+	}
+	pr_info("[%s]\n", __func__);
+	eink_clk_disable(mgr);
+	mgr->eink_mgr_disable(mgr);
+	return;
 }

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+
 #ifndef __SUNXI_SPINAND_H
 #define __SUNXI_SPINAND_H
 
@@ -117,6 +119,18 @@ struct aw_spinand_chip_ops {
 			unsigned int from_blk, unsigned int to_blk);
 };
 
+/*different manufacture spinand's ecc status location maybe not the same*/
+enum ecc_status_shift {
+	ECC_STATUS_SHIFT_0 = 0,
+	ECC_STATUS_SHIFT_1,
+	ECC_STATUS_SHIFT_2,
+	ECC_STATUS_SHIFT_3,
+	ECC_STATUS_SHIFT_4,
+	ECC_STATUS_SHIFT_5,
+	ECC_STATUS_SHIFT_6,
+	ECC_STATUS_SHIFT_7,
+};
+
 enum ecc_limit_err {
 	ECC_TYPE_ERR = 0,
 	BIT3_LIMIT2_TO_6_ERR7,
@@ -137,6 +151,8 @@ enum ecc_oob_protected {
 	/*compatible with GD5F1GQ4UBYIG@R6*/
 	SIZE16_OFF4_LEN8_OFF4,
 	SIZE16_OFF32_LEN16,
+	/*compatible with XTX*/
+	SIZE16_OFF8_LEN16,
 };
 
 struct aw_spinand_phy_info {
@@ -164,6 +180,7 @@ struct aw_spinand_phy_info {
 #define HAS_EXT_ECC_SE01			BIT(0)
 #define HAS_EXT_ECC_STATUS			BIT(1)
 	int EccFlag;
+	enum ecc_status_shift ecc_status_shift;
 	enum ecc_limit_err EccType;
 	enum ecc_oob_protected EccProtectedType;
 };
@@ -245,7 +262,7 @@ extern int aw_spinand_probe(struct udevice *dev);
 extern void aw_spinand_exit(struct aw_spinand *spinand);
 extern int spinand_mtd_init(void);
 extern int spinand_mtd_attach_mtd(void);
-extern void spinand_mtd_exit(void);
+extern int spinand_mtd_exit(void);
 extern unsigned spinand_mtd_size(void);
 extern bool support_spinand(void);
 extern struct aw_spinand *get_spinand(void);

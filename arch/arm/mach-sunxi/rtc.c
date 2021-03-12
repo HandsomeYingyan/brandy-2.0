@@ -73,4 +73,37 @@ int rtc_get_bootmode_flag(void)
 	return boot_flag;
 }
 
+#ifdef CONFIG_SUNXI_REBOOT_SCRIPT
+int do_reboot_script(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[])
+{
+	u32 cnt;
+	cnt = rtc_read_data(0);
+	cnt++;
+	if (argc < 2) {
+		printf("input err\n");
+		return -1;
+	}
+	if (argv[2]) {
+		cnt = simple_strtoul(argv[2], NULL, 16);
+		printf("set cnt to %d\n", cnt);
+	}
 
+	if (!strncmp(argv[1], "reset", sizeof("reset"))) {
+		printf("reboot cnt:%d\n", cnt);
+	} else if (!strncmp(argv[1], "efex", sizeof("efex"))) {
+		printf("reboot efex cnt:%d\n", cnt);
+	} else {
+		printf("input err\n");
+		return -1;
+	}
+	rtc_write_data(0, cnt);
+
+	run_command(argv[1], 0);
+
+	return 0;
+}
+
+U_BOOT_CMD(reboot_script, 6, 1, do_reboot_script, "reboot_script sub-system",
+		"reboot_script efex [cnt]\n"
+		"reboot_script reset [cnt]\n");
+#endif

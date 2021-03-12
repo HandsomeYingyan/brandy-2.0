@@ -111,11 +111,13 @@ static int do_mmcinfo(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 {
 	struct mmc *mmc;
 
-	curr_device = get_mmc_num();
-	printf("curr_device:%d\n", curr_device);
 	if (curr_device < 0) {
-		puts("No MMC device available\n");
-		return 1;
+		curr_device = get_mmc_num();
+		printf("curr_device:%d\n", curr_device);
+		if (curr_device < 0) {
+			puts("No MMC device available\n");
+			return 1;
+		}
 	}
 
 	mmc = init_mmc_device(curr_device, false);
@@ -400,8 +402,9 @@ static int do_mmc_part(cmd_tbl_t *cmdtp, int flag,
 static int do_mmc_dev(cmd_tbl_t *cmdtp, int flag,
 		      int argc, char * const argv[])
 {
-	int dev, part = 0, ret;
+	int dev, part = 0;
 	struct mmc *mmc;
+	__maybe_unused int ret;
 
 	if (argc == 1) {
 		dev = curr_device;
@@ -419,6 +422,7 @@ static int do_mmc_dev(cmd_tbl_t *cmdtp, int flag,
 		return CMD_RET_USAGE;
 	}
 
+#ifndef CONFIG_MMC_SUNXI
 	mmc = init_mmc_device(dev, true);
 	if (!mmc)
 		return CMD_RET_FAILURE;
@@ -428,6 +432,12 @@ static int do_mmc_dev(cmd_tbl_t *cmdtp, int flag,
 	       part, (!ret) ? "OK" : "ERROR");
 	if (ret)
 		return 1;
+#else
+	mmc = init_mmc_device(dev, false);
+	if (!mmc)
+		return CMD_RET_FAILURE;
+#endif
+
 
 	curr_device = dev;
 	if (mmc->part_config == MMCPART_NOAVAILABLE)

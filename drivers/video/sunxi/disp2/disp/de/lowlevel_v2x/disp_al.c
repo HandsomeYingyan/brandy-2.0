@@ -658,7 +658,7 @@ static struct lcd_clk_info clk_tbl[] = {
 	{LCD_IF_CPU, 12, 1, 1, 0},
 	{LCD_IF_LVDS, 7, 1, 1, 0},
 #if defined(DSI_VERSION_40)
-	{LCD_IF_DSI, 4, 1, 4, 148500000},
+	{LCD_IF_DSI, 4, 1, 4, 150000000},
 #else
 	{LCD_IF_DSI, 4, 1, 4, 0},
 #endif /*endif DSI_VERSION_40 */
@@ -714,6 +714,9 @@ int disp_al_lcd_get_clk_info(u32 screen_id, struct lcd_clk_info *info,
 		}
 
 		dsi_div = bitwidth / lane;
+#if defined(SUNXI_DSI_PASSIVE_BUG)
+		dsi_div = 6;
+#endif
 		if (panel->lcd_dsi_if == LCD_DSI_IF_COMMAND_MODE) {
 			tcon_div = dsi_div;
 		}
@@ -997,6 +1000,10 @@ int disp_al_lcd_get_start_delay(u32 screen_id, disp_panel_para *panel)
 	u32 lcd_start_delay = 0;
 	u32 de_clk_rate = de_get_clk_rate() / 1000000;
 
+	if (de_clk_rate <= 0) {
+		de_clk_rate = 297;
+		DE_WRN("%s, de_clk_rate <= 0\n", __func__);
+	}
 	if (panel && LCD_IF_DSI == panel->lcd_if) {
 		lcd_start_delay =
 		    ((tcon0_get_cpu_tri2_start_delay(screen_id) + 1) << 3) *
@@ -1314,17 +1321,30 @@ int disp_init_al(disp_bsp_init_para *para)
 	wb_ebios_init(para);
 #endif
 	de_clk_set_reg_base(para->reg_base[DISP_MOD_DE]);
+#if defined(CONFIG_INDEPENDENT_DE)
+	de1_clk_set_reg_base(para->reg_base[DISP_MOD_DE1]);
+#endif
 
 	for (i = 0; i < DEVICE_NUM; i++)
 		tcon_set_reg_base(i, para->reg_base[DISP_MOD_LCD0 + i]);
 
 	for (i = 0; i < DE_NUM; i++) {
 		if (de_feat_is_support_smbl(i))
+#if defined(CONFIG_INDEPENDENT_DE)
+			de_smbl_init(i, para->reg_base[DISP_MOD_DE + i]);
+#else
 			de_smbl_init(i, para->reg_base[DISP_MOD_DE]);
+#endif
 	}
 
 #if defined(HAVE_DEVICE_COMMON_MODULE)
+#if defined(CONFIG_INDEPENDENT_DE)
+	for (i = 0; i < DE_NUM; i++) {
+		tcon_top_set_reg_base(i, para->reg_base[DISP_MOD_DEVICE + i]);
+	}
+#else
 	tcon_top_set_reg_base(0, para->reg_base[DISP_MOD_DEVICE]);
+#endif
 #endif
 #if defined(SUPPORT_DSI)
 	for (i = 0; i < DEVICE_DSI_NUM; ++i)

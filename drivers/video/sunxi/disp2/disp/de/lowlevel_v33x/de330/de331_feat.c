@@ -138,8 +138,8 @@ static const s32 de330_mode1_num_chns[] = {
 	2, /* DISP1 */
 };
 static const s32 de330_mode1_num_vi_chns[] = {
+	1, /* DISP0 */
 	2, /* DISP0 */
-	1, /* DISP1 */
 };
 static const s32 de330_mode1_num_layers[] = {
 	4, 4, 4, 4, /* DISP0 */
@@ -182,7 +182,7 @@ static const s32 de330_mode1_is_support_de_noise[] = {
 	0, 0,      /* DISP1 */
 };
 static const s32 de330_mode1_is_support_cdc[] = {
-	1, 0, 1, 0,/* DISP0 */
+	1, 1, 0, 0,/* DISP0 */
 	0, 0,      /* DISP1 */
 };
 static const s32 de330_mode1_is_support_snr[] = {
@@ -232,8 +232,8 @@ static const u32 de330_mode1_scaler_type[] = {
 	DE_SCALER_TYPE_VSU8,
 };
 static const s32 de330_mode1_chn_id_lut[] = {
-	0, 1, 6, 7, /* DISP0 */
-	2, 8,       /* DISP1 */
+	0, 6, 7, 8, /* DISP0 */
+	2, 1,       /* DISP1 */
 };
 
 const struct de_feat de330_mode1_features = {

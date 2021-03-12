@@ -828,7 +828,7 @@ int rawnand_is_blank(void)
 		npo.chip = 0;
 		npo.block = i;
 		npo.page = 0;
-		npo.sect_bitmap = nci->sector_cnt_per_page;
+		npo.sect_bitmap = 0;
 		npo.mdata = NULL;
 		npo.sdata = oob;
 		npo.slen = 64;
@@ -1025,10 +1025,13 @@ int rawnand_uboot_erase_all_chip(UINT32 force_flag)
 		end = 0xfffff;
 
 		if (i == 0) {
-			if ((force_flag == 1) || (rawnand_is_blank()) == 1)
+			if ((force_flag == 1) || (rawnand_is_blank()) == 1) {
 				start = secure_block_start;
-			else
+				nand_secure_storage_block = 0;
+				nand_secure_storage_block_bak = 0;
+			} else {
 				start = nand_secure_storage_first_build(secure_block_start);
+			}
 		}
 
 		rawnand_erase_chip(i, start, end, force_flag);
@@ -1261,14 +1264,16 @@ int rawnand_physic_info_get_one_copy(unsigned int start_block, unsigned int page
  *****************************************************************************/
 int rawnand_add_len_to_uboot_tail(unsigned int uboot_size)
 {
-	unsigned int size_per_page, pages_per_uboot, page_no, lsb_pages, page_in_lsb_block;
+	unsigned int size_per_page, pages_per_uboot = 1, page_no, lsb_pages, page_in_lsb_block;
 	unsigned int jump_size;
 
 	size_per_page = g_nctri->nci->sector_cnt_per_page << 9;
 
-	pages_per_uboot = uboot_size / size_per_page;
-	if (uboot_size % size_per_page)
-		pages_per_uboot++;
+	if (size_per_page) {
+		pages_per_uboot = uboot_size / size_per_page;
+		if (uboot_size % size_per_page)
+			pages_per_uboot++;
+	}
 
 	jump_size = size_per_page * pages_per_uboot - uboot_size;
 

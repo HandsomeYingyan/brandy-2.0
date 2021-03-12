@@ -38,6 +38,8 @@ extern int nand_get_mbr(char* buffer, unsigned int len);
 extern int nand_uboot_init(int boot_mode);
 extern int nand_uboot_exit(int force);
 extern int nand_uboot_probe(void);
+extern unsigned int  nand_uboot_read_history(unsigned int start,
+		unsigned int sectors, void *buffer);
 extern unsigned int nand_uboot_read(unsigned int start, unsigned int sectors,
 		void *buffer);
 extern unsigned int nand_uboot_write(unsigned int start, unsigned int sectors,
@@ -58,6 +60,50 @@ extern int nand_secure_storage_read(int item, unsigned char *buf,
 		unsigned int len);
 extern int nand_secure_storage_write(int item, unsigned char *buf,
 		unsigned int len);
+extern int nand_secure_storage_fast_write(int item, unsigned char *buf,
+		unsigned int len);
+
+/* the interface for aw physic nand*/
+extern int get_uboot_start_block(void);
+extern int get_uboot_next_block(void);
+extern int get_physic_block_reserved(void);
+extern int nand_secure_storage_first_build(unsigned int start_block);
+extern char *nand_get_chip_name(void);
+extern void nand_get_chip_id(unsigned char *id, int cnt);
+extern unsigned int nand_get_chip_die_cnt(void);
+extern int nand_get_chip_page_size(enum size_type type);
+extern int nand_get_chip_block_size(enum size_type type);
+extern int nand_get_chip_die_size(enum size_type type);
+extern unsigned long long nand_get_chip_opt(void);
+extern unsigned int nand_get_chip_ddr_opt(void);
+extern unsigned int nand_get_chip_ecc_mode(void);
+extern unsigned int nand_get_chip_freq(void);
+extern unsigned int nand_get_chip_cnt(void);
+extern unsigned int  nand_get_twoplane_flag(void);
+extern unsigned int nand_get_super_chip_cnt(void);
+extern unsigned int nand_get_muti_program_flag(void);
+extern unsigned int nand_get_support_v_interleave_flag(void);
+extern unsigned int nand_get_super_chip_spare_size(void);
+extern unsigned int nand_get_super_chip_page_size(void);
+extern unsigned int nand_get_super_chip_block_size(void);
+extern unsigned int nand_get_super_chip_pages_offset_to_block(void);
+extern unsigned int nand_get_super_chip_size(void);
+extern unsigned int nand_get_support_dual_channel(void);
+extern unsigned int nand_get_chip_multi_plane_block_offset(void);
+
+extern int nand_physic_read_boot0_page(unsigned int chip, unsigned int block,
+		unsigned int page, unsigned int bitmap, unsigned char *mbuf,
+		unsigned char *sbuf);
+extern int nand_physic_read_page(unsigned int chip, unsigned int block,
+		unsigned int page, unsigned int bitmap, unsigned char *mbuf,
+		unsigned char *sbuf);
+extern int nand_physic_write_page(unsigned int chip, unsigned int block,
+		unsigned int page, unsigned int bitmap, unsigned char *mbuf,
+		unsigned char *sbuf);
+extern int nand_physic_erase_block(unsigned int chip, unsigned int block);
+extern int nand_physic_bad_block_check(unsigned int chip, unsigned int block);
+
+int nand_secure_storage_flush(void);
 
 
 /* the interface for nand with ubi */
@@ -78,6 +124,7 @@ extern int ubi_nand_write_end(void);
 extern int ubi_nand_update_ubi_env(void);
 extern int ubi_nand_secure_storage_read(int item, void *buf, unsigned int len);
 extern int ubi_nand_secure_storage_write(int item, void *buf, unsigned int len);
+
 
 #endif
 

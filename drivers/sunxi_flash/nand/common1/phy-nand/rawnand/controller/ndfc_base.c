@@ -1504,7 +1504,7 @@ s32 _batch_cmd_io_wait(struct nand_controller_info *nctri, struct _nctri_cmd_seq
 	if (ret) {
 		RAWNAND_ERR("_batch cmd io wait, wait cmd finish timeout 0x%x!\n", icmd->cmd);
 		ndfc_print_reg(nctri);
-		ret = 0;
+	//	ret = 0;
 	}
 
 	//check rb status

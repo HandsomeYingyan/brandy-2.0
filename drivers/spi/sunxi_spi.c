@@ -21,6 +21,8 @@
 #include <asm/arch/gpio.h>
 #include <sunxi_board.h>
 #include "spi-sunxi.h"
+#include <sys_config.h>
+#include <fdt_support.h>
 
 #ifdef CONFIG_SPI_USE_DMA
 static sunxi_dma_set *spi_tx_dma;
@@ -101,6 +103,64 @@ static inline struct sunxi_spi_slave *to_sunxi_slave(struct spi_slave *slave)
 	return container_of(slave, struct sunxi_spi_slave, slave);
 }
 
+static s32 sunxi_spi_gpio_request(void)
+{
+	int ret = 0;
+
+	ret = fdt_set_all_pin("spi0", "pinctrl-0");
+	if (ret <= 0) {
+		SPI_INF("set pin of spi0 fail %d\n", ret);
+		return -1;
+	}
+
+	return 0;
+}
+
+static s32 sunxi_get_spi_mode(void)
+{
+	int nodeoffset = 0;
+	int ret = 0;
+	u32 rval = 0;
+	u32 mode = 0;
+
+	nodeoffset =  fdt_path_offset(working_fdt, "spi0/spi_board0");
+	if (nodeoffset < 0) {
+		SPI_INF("get spi0 para fail\n");
+		return -1;
+	}
+
+	ret = fdt_getprop_u32(working_fdt, nodeoffset, "spi-rx-bus-width", (uint32_t *)(&rval));
+	if (ret < 0) {
+		SPI_INF("get spi-rx-bus-width fail %d\n", ret);
+		return -2;
+	}
+
+	if (rval == 1) {
+		mode |= SPI_RX_SLOW;
+	} else if (rval == 2) {
+		mode |= SPI_RX_DUAL;
+	} else if (rval == 4) {
+		mode |= SPI_RX_QUAD;
+	}
+
+#if 0
+	ret = fdt_getprop_u32(working_fdt, nodeoffset, "spi-tx-bus-width", (uint32_t *)(&rval));
+	if (ret < 0) {
+		SPI_INF("get spi-tx-bus-width fail %d\n", ret);
+		return -3;
+	}
+	if (rval == 1) {
+		mode |= SPI_TX_BYTE;
+	} else if (rval == 2) {
+		mode |= SPI_TX_DUAL;
+	} else if (rval == 4) {
+		mode |= SPI_TX_QUAD;
+	}
+#endif
+	SPI_INF("get spi-bus-width 0x%x\n", mode);
+
+	return mode;
+}
 
 /* config chip select */
 static s32 spi_set_cs(u32 chipselect, void __iomem *base_addr)
@@ -126,6 +186,12 @@ static void spi_config_tc(u32 master, u32 config, void __iomem *base_addr)
 {
 	u32 reg_val = readl(base_addr + SPI_TC_REG);
 	reg_val = SPI_TC_DHB | SPI_TC_SS_LEVEL | SPI_TC_SPOL;
+
+	if (SUNXI_SPI_DEFAULT_CLK >= 60000000)
+		reg_val |= SPI_TC_SDC;
+	else if (SUNXI_SPI_DEFAULT_CLK <= 24000000)
+		reg_val |= SPI_TC_SDM;
+
 	writel(reg_val, base_addr + SPI_TC_REG);
 #if 0
 	/*1. POL */
@@ -454,12 +520,13 @@ static int sunxi_spi_check_cs(unsigned int bus, unsigned int cs)
 
 	if((bus == 0) && (cs == 0))
 		return SUNXI_SPI_OK;
-	
+
 	return ret;
 }
 
 static int sunxi_spi_gpio_init(void)
 {
+#if 0
 #if defined(CONFIG_MACH_SUN50IW3)
 	sunxi_gpio_set_cfgpin(SUNXI_GPC(0), SUN50I_GPC_SPI0); /*spi0_sclk */
 	sunxi_gpio_set_cfgpin(SUNXI_GPC(5), SUN50I_GPC_SPI0); /*spi0_cs0*/
@@ -500,7 +567,10 @@ static int sunxi_spi_gpio_init(void)
 
 	sunxi_gpio_set_pull(SUNXI_GPC(1), 1);
 #else
-	#error "spi pinctrl not available for this architecture"
+	sunxi_spi_gpio_request();
+#endif
+#else
+	sunxi_spi_gpio_request();
 #endif
 	return 0;
 }
@@ -877,6 +947,8 @@ struct spi_slave *spi_setup_slave(unsigned int bus, unsigned int cs,
 				  unsigned int max_hz, unsigned int mode)
 {
 	struct sunxi_spi_slave *sunxi_slave;
+	int ret = 0;
+
 	SPI_ENTER();
 	if (!spi_cs_is_valid(bus, cs)) {
 		printf("sunxi_spi: invalid bus %d / chip select %d\n", bus, cs);
@@ -893,9 +965,16 @@ struct spi_slave *spi_setup_slave(unsigned int bus, unsigned int cs,
 	sunxi_slave->base_addr = SUNXI_SPI0_BASE + bus*SUNXI_SPI_PORT_OFFSET;
 
 	sunxi_slave->slave.mode = mode;
-	
+
 	/* gpio */
 	sunxi_spi_gpio_init();
+
+	/*rx/tx bus width*/
+	ret = sunxi_get_spi_mode();
+	if (ret > 0) {
+		sunxi_slave->mode = ret;
+		sunxi_slave->slave.mode = ret;
+	}
 
 	/* clock */
 	if(sunxi_spi_clk_init(0, max_hz)) {

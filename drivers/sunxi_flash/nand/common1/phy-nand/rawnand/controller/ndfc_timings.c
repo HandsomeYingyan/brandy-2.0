@@ -255,6 +255,7 @@ int start_update_nctri_interface(struct nand_controller_info *nctri, u32 input_t
 		ddr_edo = 2;
 		ddr_delay = 0x1f;
 		ndfc_change_nand_interface(nctri, ONFI_DDR, sdr_edo, 2, 0x1f);
+	}
 #endif
 	if (ddr_type_bak == SDR) {
 		tmp = sdr_edo << 8;
@@ -363,7 +364,7 @@ int update_other_nctri_interface(struct nand_controller_info *nctri)
 	unsigned int sclk0, sclk1, sclk0_bak, sclk1_bak;
 
 	if (nctri->channel_id == 0) {
-		RAWNAND_ERR("%s: wrong nctri %u\n", nctri->channel_id);
+		RAWNAND_ERR("%s: wrong nctri %u\n", __func__, nctri->channel_id);
 		return ERR_NO_46;
 	}
 

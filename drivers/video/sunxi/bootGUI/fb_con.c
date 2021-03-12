@@ -446,6 +446,8 @@ int fb_save_para(unsigned int fb_id)
 		interest_rect->left, interest_rect->top, interest_rect->right, interest_rect->bottom);
 	hal_save_string_to_kernel(name, fb_paras);
 
+	hal_save_boot_disp(fb->handle);
+
 	return 0;
 }
 
@@ -461,10 +463,13 @@ int fb_update_cmdline(unsigned int fb_id)
 	char disp_reserve[80];
 	int ret = 0;
 	int size = 0;
+	uint64_t addr = 0;
 
 	size = DO_ALIGN(fb->cv->width * fb->cv->bpp >> 3, GR_ALIGN_BYTE) *  fb->cv->height;
 	if (size && fb->cv->base) {
 		snprintf(disp_reserve, 80, "%d,0x%p", size, fb->cv->base);
+		addr = (unsigned int)fb->cv->base;
+		hal_reserve_logo_mem((uint64_t)addr, (uint64_t)size);
 		ret = env_set("disp_reserve", disp_reserve);
 		if (ret)
 			printf("Set disp_reserve env fail!\n");

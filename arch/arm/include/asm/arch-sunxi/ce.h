@@ -18,6 +18,8 @@
 #include "ce_1.0.h"
 #elif defined(CONFIG_SUNXI_CE_21)
 #include "ce_2.1.h"
+#elif defined(CONFIG_SUNXI_CE_23)
+#include "ce_2.3.h"
 #else
 #error "Unsupported plat"
 #endif

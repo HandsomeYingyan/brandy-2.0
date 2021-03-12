@@ -199,7 +199,7 @@ int nand_info_init_v1(struct _nand_info *nand_info, uchar chip, uint16 start_blo
 
 	NFTL_DBG("[ND]build_all_phy_partition start!\n");
 	if (build_all_phy_partition(nand_info) != 0) {
-		NFTL_ERR("[NE]%s(): build_all_phy_partition() fail!\n");
+		NFTL_ERR("[NE]%s(): build_all_phy_partition() fail!\n", __func__);
 		return NFTL_FAILURE;
 	}
 

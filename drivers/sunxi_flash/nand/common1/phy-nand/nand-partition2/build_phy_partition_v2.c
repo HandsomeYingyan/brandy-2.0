@@ -52,7 +52,7 @@ void print_partition(struct _partition *partition)
 *Return       :
 *Note         :
 *****************************************************************************/
-void change_partition(struct _partition *partition)
+int change_partition(struct _partition *partition)
 {
 	uint32 size = 0, i;
 
@@ -61,10 +61,16 @@ void change_partition(struct _partition *partition)
 			size += partition->nand_disk[i].size;
 		}
 		if ((partition->nand_disk[i].size == 0) && (partition->nand_disk[i].type != 0xffffffff)) {
-			partition->nand_disk[i].size = partition->size - size;
-			break;
+			if (partition->size > size) {
+				partition->nand_disk[i].size = partition->size - size;
+				break;
+			} else {
+				NFTL_ERR("sys partition is too full\n");
+				return -1;
+			}
 		}
 	}
+	return 0;
 }
 int get_max_free_block_num(struct _nand_info *nand_info, struct _nand_phy_partition *phy_partition)
 {
@@ -359,7 +365,8 @@ struct _nand_phy_partition *mp_build_phy_partition(struct _nand_info *nand_info,
 	part->end.Chip_NO = phy_partition->EndBlock.Chip_NO;
 	part->end.Block_NO = phy_partition->EndBlock.Block_NO;
 
-	change_partition(part);
+	if (change_partition(part))
+		return NULL;
 	print_partition(part);
 
 	print_phy_partition(phy_partition);

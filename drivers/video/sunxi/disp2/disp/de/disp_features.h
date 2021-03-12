@@ -29,13 +29,16 @@
 #include "./lowlevel_sun8iw10/de_feat.h"
 #elif defined(CONFIG_MACH_SUN8IW11) || defined(CONFIG_MACH_SUN8IW15)
 #include "./lowlevel_v2x/de_feat.h"
-#elif defined(CONFIG_MACH_SUN8IW12) || defined(CONFIG_MACH_SUN8IW16)
+#elif defined(CONFIG_MACH_SUN8IW12) || defined(CONFIG_MACH_SUN8IW16) \
+	|| defined(CONFIG_MACH_SUN8IW19)
 #include "./lowlevel_v2x/de_feat.h"
 #elif defined(CONFIG_MACH_SUN8IW17)
 #include "./lowlevel_v2x/de_feat.h"
 #elif defined(CONFIG_MACH_SUN50IW1)
 #include "./lowlevel_sun50iw1/de_feat.h"
 #elif defined(CONFIG_MACH_SUN50IW2)
+#include "./lowlevel_v2x/de_feat.h"
+#elif defined(CONFIG_MACH_SUN50IW10)
 #include "./lowlevel_v2x/de_feat.h"
 #elif defined(CONFIG_MACH_SUN8IW7)
 #include "./lowlevel_v2x/de_feat.h"

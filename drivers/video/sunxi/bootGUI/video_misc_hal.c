@@ -22,11 +22,16 @@
 #endif
 DECLARE_GLOBAL_DATA_PTR;
 
-#define DISP_FDT_NODE "disp"
+#define DISP_FDT_NODE "/soc/disp"
+
+int hal_reserve_logo_mem(uint64_t addr, uint64_t size)
+{
+	return fdt_add_mem_rsv(working_fdt, addr, size);
+}
 
 int get_disp_fdt_node(void)
 {
-	static int fdt_node = -1;
+	int fdt_node = -1;
 
 	if (0 <= fdt_node)
 		return fdt_node;
@@ -40,7 +45,7 @@ void disp_getprop_by_name(int node, const char *name,
 	unsigned int *value, unsigned int defval)
 {
 	if (fdt_getprop_u32(working_fdt, node, name, value) < 0) {
-		printf("set disp.%s fail. using defval=%u\n", name, defval);
+		pr_error("set disp.%s fail. using defval=%u\n", name, defval);
 		*value = defval;
 	}
 }
@@ -56,7 +61,7 @@ int hal_save_int_to_kernel(char *name, int value)
 	ret = sunxi_fdt_getprop_store(working_fdt,
 		DISP_FDT_NODE, name, (uint32_t)value);
 #endif
-	/*printf("save_int_to_kernel %s.%s(0x%x) code:%s\n",*/
+	/*pr_msg("save_int_to_kernel %s.%s(0x%x) code:%s\n",*/
 		/*DISP_FDT_NODE, name, value, fdt_strerror(ret));*/
 	return ret;
 }
@@ -72,7 +77,7 @@ int hal_save_string_to_kernel(char *name, char *str)
 	ret = sunxi_fdt_getprop_store_string(working_fdt,
 		DISP_FDT_NODE, name, str);
 #endif
-	/*printf("save_string_to_kernel %s.%s(%s). ret-code:%s\n",*/
+	/*pr_msg("save_string_to_kernel %s.%s(%s). ret-code:%s\n",*/
 		/*DISP_FDT_NODE, name, str, fdt_strerror(ret));*/
 	return ret;
 }
@@ -89,11 +94,11 @@ int hal_get_disp_device_config(int type, void *config)
 	memset(out, 0, sizeof(*out));
 
 	if (bootparam_get_disp_device_config(type, tmp)) {
-		printf("Can't get display(type:%d) config from boot\n", type);
+		pr_error("Can't get display(type:%d) config from boot\n", type);
 		return -1;
 	}
 	if (tmp[2] == 0 || tmp[3] == 0) {
-		printf("invalid display config\n");
+		pr_error("invalid display config\n");
 		return -1;
 	}
 	out->type   = type;
@@ -120,13 +125,13 @@ int hal_save_disp_device_config_to_kernel(int disp, void *from)
 		return -1;
 
 	if (!config && !hal_get_disp_device_config(DISP_OUTPUT_TYPE_HDMI, &saved)) {
-		printf("get hdmi config from bootparam success.\n");
+		pr_msg("get hdmi config from bootparam success.\n");
 		config = &saved;
 	}
 	if (!config)
 		return -1;
 
-	/*printf("hdmi config: format-%d bits-%d cs-%d eotf-%d\n",*/
+	/*pr_msg("hdmi config: format-%d bits-%d cs-%d eotf-%d\n",*/
 			/*config->format, config->bits, config->cs, config->eotf);*/
 
 #ifndef CONFIG_SUNXI_MULITCORE_BOOT
@@ -151,7 +156,7 @@ int hal_save_disp_device_config_to_kernel(int disp, void *from)
 			DISP_FDT_NODE, tag[disp], array, 6);
 */
 	/* We have already save the config on hal_switch_device() */
-	printf("bootGUI save config: %s\n", tag[disp]);
+	pr_msg("bootGUI save config: %s\n", tag[disp]);
 #endif
 	return 0;
 }
@@ -161,8 +166,9 @@ int hal_save_disp_device_config_to_kernel(int disp, void *from)
 int hal_fat_fsload(char *part_name, char *file_name, char *buf, ulong length)
 {
 	int ret = 0;
-
-	if (gd->boot_logo_addr)
+	int work_mode = get_boot_work_mode();
+	if ((gd->boot_logo_addr) || (work_mode == WORK_MODE_CARD_PRODUCT
+		|| work_mode == WORK_MODE_CARD_UPDATE))
 		return 0;
 
 #ifdef CONFIG_CMD_FAT
@@ -175,7 +181,7 @@ int hal_fat_fsload(char *part_name, char *file_name, char *buf, ulong length)
 				    load_addr, file_name,     NULL};
 	partno = sunxi_partition_get_partno_byname(part_name); /*android*/
 	if (partno < 0) {
-		printf("Get %s partition number fail!\n", part_name);
+		pr_error("Get %s partition number fail!\n", part_name);
 		return -1;
 	}
 	snprintf(part_info, 16, "0:%x", partno);

@@ -30,6 +30,7 @@ int get_nand_structure(struct _nand_super_storage_info *nssi);
 int rawnand_physic_erase_block(unsigned int chip, unsigned int block);
 int rawnand_physic_write_page(unsigned int chip, unsigned int block, unsigned int page, unsigned int bitmap, unsigned char *mbuf, unsigned char *sbuf);
 int rawnand_physic_read_page(unsigned int chip, unsigned int block, unsigned int page, unsigned int bitmap, unsigned char *mbuf, unsigned char *sbuf);
+int rawnand_physic_read_boot0_page(unsigned int chip, unsigned int block, unsigned int page, unsigned int bitmap, unsigned char *mbuf, unsigned char *sbuf);
 int rawnand_physic_erase_super_block(unsigned int chip, unsigned int block);
 int rawnand_physic_write_super_page(unsigned int chip, unsigned int block, unsigned int page, unsigned int bitmap, unsigned char *mbuf, unsigned char *sbuf);
 int rawnand_physic_read_super_page(unsigned int chip, unsigned int block, unsigned int page, unsigned int bitmap, unsigned char *mbuf, unsigned char *sbuf);

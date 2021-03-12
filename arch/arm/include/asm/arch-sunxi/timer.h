@@ -71,6 +71,17 @@ struct sunxi_timer_reg {
 	struct sunxi_wdog wdog[1];		/* 0xa0 */
 	struct sunxi_avs avs;			/* 0xc0 */
 };
+#elif defined(CONFIG_MACH_SUN50IW11) || defined(CONFIG_MACH_SUN50IW12) \
+	|| defined(CONFIG_MACH_SUN20IW1) || defined (CONFIG_MACH_SUN8IW20)
+struct sunxi_timer_reg {
+	volatile u32 tirqen;		/* 0x00 */
+	volatile u32 tirqsta;	/* 0x04 */
+	uint     res1[2];
+	struct sunxi_timer timer[2];		/* We have 2 timers */
+	uint  	 res2[0x70/4];			/* 0x70 */
+	struct sunxi_wdog wdog[1];		/* 0xa0 */
+	struct sunxi_avs avs;			/* 0xc0 */
+};
 #elif defined (CONFIG_MACH_SUN8IW18)
 struct sunxi_timer_reg {
 	volatile u32 tirqen;			/* 0x00 */

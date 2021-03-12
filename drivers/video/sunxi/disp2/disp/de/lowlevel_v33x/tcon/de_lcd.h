@@ -21,6 +21,8 @@ enum __lcd_irq_id_t {
 	LCD_IRQ_TCON1_LINE = 12,
 	LCD_IRQ_TCON0_TRIF = 11,
 	LCD_IRQ_TCON0_CNTR = 10,
+	LCD_IRQ_FSYNC_INT = 9,
+	LCD_IRQ_DATA_EN_INT = 8,
 };
 
 enum __dsi_irq_id_t {
@@ -136,5 +138,35 @@ extern s32 disp_delay_us(u32 us);
 extern s32 disp_delay_ms(u32 ms);
 extern int de_get_clk_rate(void);
 void tcon_show_builtin_patten(u32 sel, u32 patten);
+
+/**
+ * @name       :tcon_fsync_set_pol
+ * @brief      :set fsync's polarity
+ * @param[IN]  :sel:tcon index
+ * @param[IN]  :pol:polarity. 1:positive;0:negetive
+ *	positive:
+ *           +---------+
+ *  ---------+         +-----------
+ *
+ *	negative:
+ *  ---------+         +------------
+ *	     +---------+
+ *
+ * @return     :always 0
+ */
+s32 tcon_set_fsync_pol(u32 sel, u32 pol);
+
+/**
+ * @name       :tcon_set_fsync_active_time
+ * @brief      :set tcon fsync's active time
+ * @param[IN]  :sel:tcon index
+ * @param[IN]  :pixel_num:number of pixel time(Tpixel) to set
+ *
+ * Tpixel = 1/fps*1e9/vt/ht, unit:ns
+ *
+ * @return     :0 if success
+ */
+s32 tcon_set_fsync_active_time(u32 sel, u32 pixel_num);
+
 
 #endif

@@ -25,16 +25,13 @@ typedef struct {
 	void *buffer;
 } sunxi_bmp_store_t;
 
+
 extern int sunxi_bmp_decode(unsigned long addr, sunxi_bmp_store_t *bmp_info);
 extern int sunxi_bmp_dipslay_screen(sunxi_bmp_store_t bmp_info);
 extern int sunxi_bmp_display_mem(unsigned char *source, sunxi_bmp_store_t *bmp_info);
 extern int show_bmp_on_fb(char *bmp_head_addr, unsigned int fb_id);
 extern int sunxi_partition_get_partno_byname(const char *part_name);
 extern int sunxi_advert_display(char *fatname, char *filename);
-
-#if defined(CONFIG_SUN8IW12P1_NOR) || defined(CONFIG_SUN8IW16P1_NOR) || defined(CONFIG_SUN8IW16P1_AXP2101_NOR)
-extern int read_bmp_to_kernel(char *partition_name);
-#endif
 
 #define IDLE_STATUS 0
 #define DISPLAY_DRIVER_INIT_OK  1

@@ -105,7 +105,7 @@ sunxi_usb_setup_req_t;
         sunxi_usb_module_ext(SUNXI_USB_DEVICE_EFEX_TEST);
 #endif
 #ifdef SUNXI_USB_DEVICE_DETECT
-        sunxi_usb_module_ext(SUNXI_USB_DEVICE_DETECT);
+		sunxi_usb_module_ext(SUNXI_USB_DEVICE_DETECT);
 #endif
 
 #endif

@@ -314,7 +314,7 @@ struct sunxi_ccm_reg {
 
 #define CE_CLK_DIV_RATION_M_BIT           (0)
 #define CE_CLK_DIV_RATION_M_MASK          (0xF)
-#define CE_CLK_DIV_RATION_M               (3)
+#define CE_CLK_DIV_RATION_M               (2)
 
 #define CE_SCLK_ONOFF_BIT                 (31)
 #define CE_SCLK_ON                        (1)

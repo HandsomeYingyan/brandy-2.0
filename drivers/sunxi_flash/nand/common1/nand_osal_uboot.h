@@ -16,12 +16,14 @@ __u32 NAND_GetMaxChannelCnt(void);
 int NAND_Print(const char *str, ...);
 int NAND_Print_DBG(const char *str, ...);
 __u32 get_storage_type(void);
+int NAND_IS_Burn_Mode(void);
 extern int (*NAND_ClkRequest) (__u32 NAND_index);
 extern void (*NAND_ClkRelease) (__u32 nand_index);
 extern int (*NAND_SetClk) (__u32 nand_index, __u32 nand_clk0,
 		__u32 nand_clk1);
 extern int (*NAND_GetClk) (__u32 nand_index, __u32 *pnand_clk0, __u32 *pnand_clk1);
 void nand_enable_vccq_1p8v(void);
+void nand_enable_vccq_3p3v(void);
 /*
  *extern int (*NAND_GetClk) (__u32 nand_index, __u32 *pnand_clk0,
  *                __u32 *pnand_clk1);

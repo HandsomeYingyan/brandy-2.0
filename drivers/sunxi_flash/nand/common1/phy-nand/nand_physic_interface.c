@@ -24,7 +24,7 @@
 ************************************************************************************************************************
 */
 #define _NPHYI_COMMON_C_
-
+#include <stdio.h>
 #include <sunxi_nand.h>
 #include "nand_physic_interface.h"
 #include "nand-partition/phy.h"
@@ -239,7 +239,10 @@ void *nand_get_channel_base_addr(u32 no)
 *****************************************************************************/
 u32 NAND_GetLogicPageSize(void)
 {
-	//return 16384;
+#ifdef CONFIG_SUNXI_UBIFS
+	if (nand_use_ubi())
+		return 16384;
+#endif
 	return 512 * aw_nand_info.SectorNumsPerPage;
 }
 
@@ -259,6 +262,22 @@ int nand_physic_erase_block(unsigned int chip, unsigned int block)
 	return 0;
 }
 
+/**
+ * nand_physic_read_boot0_page:
+ * @chip : 0
+ * @block: 0~4/0~8
+ * @bitmap: not care
+ * @mbuf: pagesize
+ * @sbuf: 64
+ */
+int nand_physic_read_boot0_page(unsigned int chip, unsigned int block, unsigned int page, unsigned int bitmap, unsigned char *mbuf, unsigned char *sbuf)
+{
+	if (get_storage_type() == 1)
+		return rawnand_physic_read_boot0_page(chip, block, page, bitmap, mbuf, sbuf);
+	else if (get_storage_type() == 2)
+		return 0;
+	return 0;
+}
 /*****************************************************************************
 *Name         :
 *Description  :
@@ -330,10 +349,10 @@ int nand_physic_bad_block_mark(unsigned int chip, unsigned int block)
 *Return       : 0:ok  -1:fail
 *Note         :
 *****************************************************************************/
-int nand_physic_block_copy(unsigned int chip_s, unsigned int block_s, unsigned int chip_d, unsigned int block_d)
+int nand_physic_block_copy(unsigned int chip_s, unsigned int block_s, unsigned int chip_d, unsigned int block_d, unsigned int copy_nums)
 {
 	if (get_storage_type() == 1)
-		return rawnand_physic_block_copy(chip_s, block_s, chip_d, block_d);
+		return rawnand_physic_block_copy(chip_s, block_s, chip_d, block_d, copy_nums);
 	else if (get_storage_type() == 2)
 		return spinand_nftl_single_block_copy(chip_s, block_s, chip_d, block_d);
 	return 0;
@@ -488,6 +507,325 @@ __u32 nand_get_twoplane_flag(void)
 		return rawnand_get_twoplane_flag();
 	else if (get_storage_type() == 2)
 		return spinand_nftl_get_multi_plane_flag();
+	return 0;
+}
+
+unsigned int nand_get_muti_program_flag(void)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nsi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_muti_program_flag(g_nsi->nci);
+	 } else if (get_storage_type() == 2)
+		return 0;
+	return 0;
+}
+
+unsigned int nand_get_support_v_interleave_flag(void)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nssi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_support_v_interleave_flag(g_nssi->nsci);
+	} else if (get_storage_type() == 2)
+		return 0;
+	return 0;
+}
+
+char *nand_get_chip_name(void)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nsi) {
+			printf("rawnand hw not init\n");
+			return NULL;
+		}
+		return rawnand_get_chip_name(g_nsi->nci);
+	} else if (get_storage_type() == 2)
+		return NULL;
+
+	return NULL;
+}
+
+void nand_get_chip_id(unsigned char *id, int cnt)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nsi) {
+			printf("rawnand hw not init\n");
+			return;
+		}
+		return rawnand_get_chip_id(g_nsi->nci, id, cnt);
+	} else if (get_storage_type() == 2)
+		return;
+	return;
+}
+
+unsigned int nand_get_chip_die_cnt(void)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nsi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_chip_die_cnt(g_nsi->nci);
+	} else if (get_storage_type() == 2)
+		return 0;
+	return 0;
+}
+
+
+int nand_get_chip_page_size(enum size_type type)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nsi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_chip_page_size(g_nsi->nci, type);
+	} else if (get_storage_type() == 2)
+		return 0;
+
+	return 0;
+}
+
+int nand_get_chip_block_size(enum size_type type)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nsi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_chip_block_size(g_nsi->nci, type);
+	} else if (get_storage_type() == 2)
+		return 0;
+
+	return 0;
+}
+
+int nand_get_chip_die_size(enum size_type type)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nsi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_chip_die_size(g_nsi->nci, type);
+	} else if (get_storage_type() == 2)
+		return 0;
+
+	return 0;
+}
+
+unsigned long long nand_get_chip_opt(void)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nsi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_chip_opt(g_nsi->nci);
+	} else if (get_storage_type() == 2)
+		return 0;
+
+	return 0;
+}
+
+unsigned int nand_get_chip_ddr_opt(void)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nsi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_chip_ddr_opt(g_nsi->nci);
+	} else if (get_storage_type() == 2)
+		return 0;
+
+	return 0;
+}
+unsigned int nand_get_chip_ecc_mode(void)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nsi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_chip_ecc_mode(g_nsi->nci);
+	} else if (get_storage_type() == 2)
+		return 0;
+
+	return 0;
+}
+
+unsigned int nand_get_chip_freq(void)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nsi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_chip_freq(g_nsi->nci);
+	} else if (get_storage_type() == 2)
+		return 0;
+
+	return 0;
+}
+
+unsigned int nand_get_chip_cnt(void)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nsi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_chip_cnt(g_nsi->nci);
+	} else if (get_storage_type() == 2)
+		return 0;
+
+	return 0;
+}
+
+unsigned int nand_get_chip_multi_plane_block_offset(void)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nsi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_chip_multi_plane_block_offset(g_nsi->nci);
+	} else if (get_storage_type() == 2)
+		return 0;
+
+	return 0;
+}
+
+unsigned int nand_get_super_chip_cnt(void)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nssi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_super_chip_cnt(g_nssi->nsci);
+	} else if (get_storage_type() == 2)
+		return 0;
+
+	return 0;
+}
+
+/**
+ * nand_get_super_chip_page_size:
+ *
+ * @return page size in sector
+ */
+unsigned int nand_get_super_chip_page_size(void)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nssi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_super_chip_page_size(g_nssi->nsci);
+	} else if (get_storage_type() == 2)
+		return 0;
+
+	return 0;
+}
+
+/**
+ * nand_get_super_chip_spare_size:
+ *
+ * @return the super chip spare size
+ */
+unsigned int nand_get_super_chip_spare_size(void)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nssi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_super_chip_spare_size(g_nssi->nsci);
+	} else if (get_storage_type() == 2)
+		return 0;
+
+	return 0;
+}
+/**
+ * nand_get_super_chip_block_size:
+ *
+ * @return block size in page
+ */
+unsigned int nand_get_super_chip_block_size(void)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nssi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_super_chip_block_size(g_nssi->nsci);
+	} else if (get_storage_type() == 2)
+		return 0;
+
+	return 0;
+}
+
+/**
+ * nand_get_super_chip_page_offset_to_block:
+ *
+ * @return the page offset for next super block
+ */
+unsigned int nand_get_super_chip_pages_offset_to_block(void)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nssi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_super_chip_page_offset_to_block(g_nssi->nsci);
+	} else if (get_storage_type() == 2)
+		return 0;
+
+	return 0;
+}
+
+/**
+ * nand_get_support_dual_channel:
+ *
+ * @return 1 if support dual channel ,otherwise return 0
+ */
+unsigned int nand_get_support_dual_channel(void)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nssi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_support_dual_channel();
+	} else if (get_storage_type() == 2)
+		return 0;
+
+	return 0;
+}
+
+/**
+ * nand_get_super_chip_size:
+ *
+ * @return super chip size in block
+ */
+unsigned int nand_get_super_chip_size(void)
+{
+	if (get_storage_type() == 1) {
+		if (!g_nssi) {
+			printf("rawnand hw not init\n");
+			return 0;
+		}
+		return rawnand_get_super_chip_size(g_nssi->nsci);
+	} else if (get_storage_type() == 2)
+		return 0;
+
 	return 0;
 }
 

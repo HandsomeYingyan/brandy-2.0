@@ -14,41 +14,33 @@
 #include <command.h>
 #include <malloc.h>
 #include <sunxi_bmp.h>
+#include <bmp_layout.h>
 #include <sunxi_board.h>
 #include <sys_partition.h>
 #include <fdt_support.h>
 
-#if defined(CONFIG_SUN8IW12P1_NOR) || defined(CONFIG_SUN8IW16P1_NOR) || defined(CONFIG_SUN8IW16P1_AXP2101_NOR)
 extern int sunxi_partition_get_partno_byname(const char *part_name);
 
-#ifndef CONFIG_BOOTLOGO_DISABLE
-
-/*this function will creat memory address that was be use to logo buffer
- *the return value meant:
- *1:CONFIG_SUNXI_LOGBUFFER that in top of dram and size you can be set
- *in sun8iw16p1.h
- *2:SUNXI_DISPLAY_FRAME_BUFFER_ADDR that you can set a physical address
- *you want and the address & size can be set in sun8iw16p1.h
- *3:the address will malloc.
- */
 static int malloc_bmp_mem(char **buff, int size)
 {
-	int ret;
-#if defined(CONFIG_SUNXI_LOGBUFFER)
-	*buff = (void *)(CONFIG_SYS_SDRAM_BASE + gd->ram_size - SUNXI_DISPLAY_FRAME_BUFFER_SIZE);
-	ret = 1;
-#elif defined(SUNXI_DISPLAY_FRAME_BUFFER_ADDR)
-	*buff = (void *)(SUNXI_DISPLAY_FRAME_BUFFER_ADDR);
-	ret = 2;
-#else
 	*buff = memalign(CONFIG_SYS_CACHELINE_SIZE, (size + 512 + 0x1000));
-	if (NULL == bmp_buff) {
-	    pr_error("bmp buffer malloc error!\n");
+	if (NULL == *buff) {
+	    pr_error("buffer malloc error!\n");
 	    return -1;
 	}
-	ret = 3;
+	return 0;
+}
+
+static void update_disp_reserve(unsigned int size, void *addr)
+{
+	char disp_reserve[80];
+
+	snprintf(disp_reserve, 80, "%d,0x%p", size, addr);
+#if defined(CONFIG_CMD_FAT)
+	env_set("disp_reserve", disp_reserve);
+#else
+	pr_error("You need to enable CONFIG_CMD_FAT to update disp_reserve\n");
 #endif
-	return ret;
 }
 
 static int board_display_update_para_for_kernel(char *name, int value)
@@ -77,12 +69,69 @@ exit:
 #endif
 }
 
+int fat_read_logo_to_kernel(char *name)
+{
+	int ret = -1;
+#if defined(CONFIG_CMD_FAT)
+	char *argv[6];
+	char bmp_head[32];
+	char bmp_name[32];
+	char part_info[16] = {0};
+	int partno = -1;
+	struct bmp_header *bmp_head_addr = (struct bmp_header *)CONFIG_SYS_SDRAM_BASE;
+	char *bmp_buff = NULL;
+
+	if (bmp_head_addr) {
+		sprintf(bmp_head, "%lx", (ulong)bmp_head_addr);
+	} else {
+		pr_error("sunxi bmp: alloc buffer for %s fail\n", name);
+		return -1;
+	}
+	strncpy(bmp_name, name, sizeof(bmp_name));
+	tick_printf("bmp_name=%s\n", bmp_name);
+
+	partno = sunxi_partition_get_partno_byname("boot-resource"); /*android*/
+	if (partno < 0) {
+		pr_error("Get boot-resource partition number fail!\n");
+		return -1;
+	}
+	snprintf(part_info, 16, "0:%x", partno);
+
+	argv[0] = "fatload";
+	argv[1] = "sunxi_flash";
+	argv[2] = part_info;
+	argv[3] = bmp_head;
+	argv[4] = bmp_name;
+	argv[5] = NULL;
+
+	if (do_fat_fsload(0, 0, 5, argv)) {
+		pr_error("sunxi bmp info error : unable to open logo file %s\n",
+		       argv[4]);
+		return -1;
+	}
+	if (bmp_head_addr->signature[0] != 'B' ||
+	    bmp_head_addr->signature[1] != 'M') {
+		pr_error("This not a BMP file!\n");
+		return 0;
+	}
+	ret = malloc_bmp_mem(&bmp_buff, bmp_head_addr->file_size);
+	if (ret) {
+		pr_error("Malloc fail!\n");
+		return 0;
+	}
+
+	memcpy(bmp_buff, bmp_head_addr, bmp_head_addr->file_size);
+	update_disp_reserve(bmp_head_addr->file_size, (void *)bmp_buff);
+#endif
+	return ret;
+}
+
 /*
  *get BMP file from partition ,so give it partition name
  */
 int read_bmp_to_kernel(char *partition_name)
 {
-	bmp_header_t *bmp_header_info = NULL;
+	struct bmp_header *bmp_header_info = NULL;
 	char *bmp_buff = NULL;
 	char *align_addr = NULL;
 	u32 start_block = 0;
@@ -93,18 +142,14 @@ int read_bmp_to_kernel(char *partition_name)
 	struct lzma_header *lzma_head = NULL;
 	u32 file_size;
 
-	 /*read logo.bmp header info*/
-	start_block =
-	       sunxi_partition_get_offset_byname((const char *)partition_name);
+	sunxi_partition_get_info_byname(partition_name, &start_block, &patition_size);
 	if (!start_block) {
 		pr_error("cant find part named %s\n", (char *)partition_name);
 		return -1;
 	}
-	patition_size =
-		sunxi_partition_get_size_byname((const char *)partition_name);
+
 	ret = sunxi_flash_read(start_block, 1, tmp);
-	debug("The flash read ret:%d\n", ret);
-	bmp_header_info = (bmp_header_t *)tmp;
+	bmp_header_info = (struct bmp_header *)tmp;
 	lzma_head = (struct lzma_header *)tmp;
 	file_size = bmp_header_info->file_size;
 
@@ -144,17 +189,11 @@ int read_bmp_to_kernel(char *partition_name)
 	}
 
 	printf("the align_addr is %x \n", (unsigned int)align_addr);
+
 	/*read logo.bmp all info*/
+	update_disp_reserve(rblock * 512, (void *)align_addr);
 	ret = sunxi_flash_read(start_block, rblock, align_addr);
 	board_display_update_para_for_kernel("fb_base", (uint)align_addr);
 	return 0;
 
 }
-#else
-int read_bmp_to_kernel(char *partition_name)
-{
-	printf("cancle bootlogo show! \n");
-	return 0;
-}
-#endif
-#endif

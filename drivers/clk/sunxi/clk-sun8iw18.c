@@ -488,7 +488,6 @@ void init_clocks(void)
 		periph->periph->priv_regops = NULL;
 		sunxi_clk_register_periph(periph, sunxi_clk_base);
 	}
-	printf("%s: finish init_clocks.\n", __func__);
 }
 
 #if defined(CONFIG_OF)

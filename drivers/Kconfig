@@ -116,6 +116,8 @@ source "drivers/sunxi_ir/Kconfig"
 
 source "drivers/arisc/Kconfig"
 
+source "drivers/dsp/Kconfig"
+
 config PHYS_TO_BUS
 	bool "Custom physical to bus address mapping"
 	help

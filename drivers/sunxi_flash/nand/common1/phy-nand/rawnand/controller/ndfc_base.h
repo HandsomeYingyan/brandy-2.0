@@ -612,6 +612,9 @@ struct nand_controller_info {
 	u32 random_cmd2_send_flag; //special nand cmd for some nand in batch cmd
 	u32 random_cmd2;	   //special nand cmd for some nand in batch cmd
 	u32 random_addr_num;       //random col addr num in batch cmd
+#define SMALL_CAPACITY_NAND (1 << 16)
+#define RANDOM_VALID_BITS (0xFFFF)
+	int random_factor; /*use in write boot0*/
 
 	void *nreg_base;
 	struct _nand_controller_reg nreg;
@@ -844,6 +847,7 @@ struct nand_controller_info {
 #define CMD_SYNC_RESET 0xFC
 #define CMD_READ_STA 0x70
 #define CMD_READ_ID 0x90
+#define CMD_READ_PARAMETER 0xEC
 #define CMD_SET_FEATURE 0xEF
 #define CMD_GET_FEATURE 0xEE
 #define CMD_READ_PAGE_CMD1 0x00
@@ -857,6 +861,13 @@ struct nand_controller_info {
 #define CMD_ERASE_CMD2 0xD0
 
 #define NDFC_CMD(x) (x)
+
+
+#define MICRON_ONFI_PARAMETER_ADDR (0x0)
+#define MICRON_JEDEC_PARAMETER_ADDR (0x40)
+
+#define REVISION_FEATURES_BLOCK_INFO_PARAMETER_LEN (256)
+#define MCIRON_DEVICE_MODEL_OFFSET (44)
 //==============================================================================
 //  define some constant variable for the nand flash driver used
 //==============================================================================

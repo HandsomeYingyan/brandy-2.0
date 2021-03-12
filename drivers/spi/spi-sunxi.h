@@ -61,6 +61,7 @@
 #define SPI_TC_RPSM		(0x1 << 10) /* select mode for high speed write,0:normal write mode,1:rapids write mode,default 0 */
 #define SPI_TC_SDC		(0x1 << 11) /* master sample data control, 1: delay--high speed operation;0:no delay. */
 #define SPI_TC_FBS		(0x1 << 12) /* LSB/MSB transfer first select 0:MSB,1:LSB,default 0:MSB first */
+#define SPI_TC_SDM		(0x1 << 13) /* master sample data mode, SDM = 1:Normal Sample Mode, SDM = 0:Delay Sample Mode */
 #define SPI_TC_XCH		(0x1 << 31) /* Exchange burst default 0:idle,1:start exchange;when BC is zero,this bit cleared by SPI controller*/
 #define SPI_TC_SS_BIT_POS	(4)
 

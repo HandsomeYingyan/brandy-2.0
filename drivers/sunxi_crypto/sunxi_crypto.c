@@ -15,7 +15,6 @@
 #define ALG_SHA512 (0x15)
 #define ALG_RSA (0x20)
 #define ALG_MD5 (0x10)
-#define ALG_TRANG (0x1C)
 
 /*check if task_queue size is cache_line align*/
 #define STATIC_CHECK(condition) extern u8 checkFailAt##__LINE__[-!(condition)];
@@ -205,6 +204,7 @@ int sunxi_sha_calc(u8 *dst_addr, u32 dst_len, u8 *src_addr, u32 src_len)
 {
 	u32 word_len = 0, src_align_len = 0;
 	u32 total_bit_len			    = 0;
+	u32 align_shift = 0;
 	task_queue task0 __aligned(CACHE_LINE_SIZE) = { 0 };
 	/* sha256  2word, sha512 4word*/
 	ALLOC_CACHE_ALIGN_BUFFER(u32, total_package_len,
@@ -212,6 +212,8 @@ int sunxi_sha_calc(u8 *dst_addr, u32 dst_len, u8 *src_addr, u32 src_len)
 	ALLOC_CACHE_ALIGN_BUFFER(u8, p_sign, CACHE_LINE_SIZE);
 
 	memset(p_sign, 0, CACHE_LINE_SIZE);
+
+	align_shift = ss_get_addr_align();
 
 	if (ss_get_ver() < 2) {
 		/* CE1.0 */
@@ -233,13 +235,13 @@ int sunxi_sha_calc(u8 *dst_addr, u32 dst_len, u8 *src_addr, u32 src_len)
 
 		task0.task_id	= 0;
 		task0.common_ctl     = (ALG_SHA256) | (1 << 15) | (1U << 31);
-		task0.key_descriptor = (u32)total_package_len;
+		task0.key_descriptor = ((u32)total_package_len >> align_shift);
 		task0.data_len       = total_bit_len;
 	}
 
-	task0.source[0].addr	= (uint)src_addr;
+	task0.source[0].addr	= ((uint)src_addr >> align_shift);
 	task0.source[0].length      = word_len;
-	task0.destination[0].addr   = (uint)p_sign;
+	task0.destination[0].addr   = ((uint)p_sign >> align_shift);
 	task0.destination[0].length = 32 >> 2;
 	task0.next_descriptor       = 0;
 
@@ -248,7 +250,7 @@ int sunxi_sha_calc(u8 *dst_addr, u32 dst_len, u8 *src_addr, u32 src_len)
 	flush_cache((u32)src_addr, src_align_len);
 	flush_cache((u32)total_package_len, CACHE_LINE_SIZE);
 
-	ss_set_drq((u32)&task0);
+	ss_set_drq(((u32)&task0 >> align_shift));
 	ss_irq_enable(task0.task_id);
 	ss_ctrl_start(ALG_SHA256);
 	ss_wait_finish(task0.task_id);
@@ -273,6 +275,7 @@ s32 sunxi_rsa_calc(u8 *n_addr, u32 n_len, u8 *e_addr, u32 e_len, u8 *dst_addr,
 	u32 mod_bit_size	 = 2048;
 	u32 mod_size_len_inbytes = mod_bit_size / 8;
 	u32 data_word_len	= mod_size_len_inbytes / 4;
+	u32 align_shift = 0;
 
 	task_queue task0 __aligned(CACHE_LINE_SIZE) = { 0 };
 	ALLOC_CACHE_ALIGN_BUFFER(u8, p_n, TEMP_BUFF_LEN);
@@ -284,6 +287,8 @@ s32 sunxi_rsa_calc(u8 *n_addr, u32 n_len, u8 *e_addr, u32 e_len, u8 *dst_addr,
 	__rsa_padding(p_n, n_addr, n_len, mod_size_len_inbytes);
 	memset(p_e, 0, mod_size_len_inbytes);
 	memcpy(p_e, e_addr, e_len);
+
+	align_shift = ss_get_addr_align();
 
 	if (ss_get_ver() < 2) {
 		/* CE1.0 */
@@ -308,11 +313,11 @@ s32 sunxi_rsa_calc(u8 *n_addr, u32 n_len, u8 *e_addr, u32 e_len, u8 *dst_addr,
 		task0.asymmetric_ctl = (2048 / 32); /* rsa2048 */
 		task0.ctr_descriptor = 0;
 
-		task0.source[0].addr   = (uint)p_e;
+		task0.source[0].addr   = ((uint)p_e >> align_shift);
 		task0.source[0].length = data_word_len;
-		task0.source[1].addr   = (uint)p_n;
+		task0.source[1].addr   = ((uint)p_n >> align_shift);
 		task0.source[1].length = data_word_len;
-		task0.source[2].addr   = (uint)p_src;
+		task0.source[2].addr   = ((uint)p_src >> align_shift);
 		task0.source[2].length = data_word_len;
 
 		task0.data_len += task0.source[0].length;
@@ -320,7 +325,7 @@ s32 sunxi_rsa_calc(u8 *n_addr, u32 n_len, u8 *e_addr, u32 e_len, u8 *dst_addr,
 		task0.data_len += task0.source[2].length;
 		task0.data_len *= 4; /* byte len */
 
-		task0.destination[0].addr   = (uint)p_dst;
+		task0.destination[0].addr   = ((uint)p_dst >> align_shift);
 		task0.destination[0].length = data_word_len;
 	}
 
@@ -330,7 +335,7 @@ s32 sunxi_rsa_calc(u8 *n_addr, u32 n_len, u8 *e_addr, u32 e_len, u8 *dst_addr,
 	flush_cache((u32)p_src, mod_size_len_inbytes);
 	flush_cache((u32)p_dst, mod_size_len_inbytes);
 
-	ss_set_drq((u32)&task0);
+	ss_set_drq(((u32)&task0 >> align_shift));
 	ss_irq_enable(task0.task_id);
 	ss_ctrl_start(ALG_RSA);
 	ss_wait_finish(task0.task_id);
@@ -351,6 +356,7 @@ s32 sunxi_rsa_calc(u8 *n_addr, u32 n_len, u8 *e_addr, u32 e_len, u8 *dst_addr,
 int sunxi_create_rssk(u8 *rssk_buf, u32 rssk_byte)
 {
 	u32 total_bit_len			    = 0;
+	u32 align_shift				    = 0;
 	task_queue task0 __aligned(CACHE_LINE_SIZE) = { 0 };
 
 	ALLOC_CACHE_ALIGN_BUFFER(u32, total_package_len,
@@ -363,6 +369,8 @@ int sunxi_create_rssk(u8 *rssk_buf, u32 rssk_byte)
 		return -1;
 	}
 
+	align_shift = ss_get_addr_align();
+
 	total_bit_len	= rssk_byte << 3;
 	total_package_len[0] = total_bit_len;
 	total_package_len[1] = 0;
@@ -370,10 +378,11 @@ int sunxi_create_rssk(u8 *rssk_buf, u32 rssk_byte)
 	task0.task_id		    = 0;
 	task0.common_ctl	    = (ALG_TRANG) | (0x1U << 31);
 	task0.key_descriptor	= (uint)total_package_len;
-	task0.data_len		    = total_bit_len;
+	task0.data_len		    = rssk_byte;
+
 	task0.source[0].addr	= 0;
 	task0.source[0].length      = 0;
-	task0.destination[0].addr   = (uint)p_sign;
+	task0.destination[0].addr   = (uint)p_sign >> align_shift;
 	task0.destination[0].length = (rssk_byte >> 2);
 	task0.next_descriptor       = 0;
 
@@ -381,7 +390,7 @@ int sunxi_create_rssk(u8 *rssk_buf, u32 rssk_byte)
 	flush_cache((u32)p_sign, CACHE_LINE_SIZE);
 	flush_cache((u32)total_package_len, CACHE_LINE_SIZE);
 
-	ss_set_drq((u32)&task0);
+	ss_set_drq(((u32)&task0 >> align_shift));
 	ss_irq_enable(task0.task_id);
 	ss_ctrl_start(ALG_TRANG);
 	ss_wait_finish(task0.task_id);

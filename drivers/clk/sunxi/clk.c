@@ -50,8 +50,9 @@ static void __clk_disable(struct clk *clk)
 
 	if (clk->ops->disable)
 		clk->ops->disable(clk->hw);
-
+#ifndef CONFIG_EINK200_SUNXI
 	__clk_disable(clk->parent);
+#endif
 }
 
 unsigned long __clk_get_rate(struct clk *clk)
@@ -74,7 +75,7 @@ static int __clk_enable(struct clk *clk)
 
 	if (!clk){
 
-		printf("%s: clk is null.\n",__func__);
+		pr_error("%s: clk is null.\n", __func__);
 		return -1;
 	}
 	if (clk->flags & CLK_IS_ROOT) {
@@ -83,9 +84,11 @@ static int __clk_enable(struct clk *clk)
 	}
 
 	if (clk->enable_count == 0) {
-		ret = __clk_enable(clk->parent);
-		if (ret)
-			return ret;
+		if (clk->parent) {
+			ret = __clk_enable(clk->parent);
+			if (ret)
+				return ret;
+		}
 
 		if (clk->ops->enable) {
 			ret = clk->ops->enable(clk->hw);
@@ -467,6 +470,7 @@ void clk_put(struct clk *clk)
 int clk_init(void)
 {
 	init_clocks();
+	pr_msg("init_clocks:finish\n");
 	return 0;
 }
 
@@ -493,7 +497,7 @@ struct clk *clk_register(struct clk_hw *hw)
 
 	ret = __clk_init(clk);
 	if (!ret)
-        return clk;
+		return clk;
 
 	free(clk);
 fail_out:

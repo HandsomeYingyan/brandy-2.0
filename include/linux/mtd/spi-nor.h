@@ -27,6 +27,8 @@
 #define SNOR_MFR_SST		CFI_MFR_SST
 #define SNOR_MFR_WINBOND	0xef /* Also used by some Spansion */
 #define SNOR_MFR_PUYA		0x85
+#define SNOR_MFR_XMC		0x20
+#define SNOR_MFR_ADESTO		0x1f
 
 /*
  * Note on opcode nomenclature: some opcodes have a format like
@@ -41,7 +43,7 @@
 #define SPINOR_OP_RDSR		0x05	/* Read status register */
 #define SPINOR_OP_WRSR		0x01	/* Write status register 1 byte */
 #define SPINOR_OP_RDSR2		0x3f	/* Read status register 2 */
-#define SPINOR_OP_WRSR2		0x3e	/* Write status register 2 */
+#define SPINOR_OP_WRSR2		0x31	/* Write status register 2 */
 #define SPINOR_OP_READ		0x03	/* Read data bytes (low frequency) */
 #define SPINOR_OP_READ_FAST	0x0b	/* Read data bytes (high frequency) */
 #define SPINOR_OP_READ_1_1_2	0x3b	/* Read data bytes (Dual Output SPI) */
@@ -63,6 +65,8 @@
 #define SPINOR_OP_CLFSR		0x50	/* Clear flag status register */
 #define SPINOR_OP_RDEAR		0xc8	/* Read Extended Address Register */
 #define SPINOR_OP_WREAR		0xc5	/* Write Extended Address Register */
+#define SPINOR_OP_RESTEN	0x66	/* Reset enable*/
+#define SPINOR_OP_RESET		0x99	/* Reset device*/
 
 /* 4-byte address opcodes - used on Spansion and some Macronix flashes. */
 #define SPINOR_OP_READ_4B	0x13	/* Read data bytes (low frequency) */
@@ -140,6 +144,7 @@
 /* Configuration Register bits. */
 #define CR_QUAD_EN_SPAN		BIT(1)	/* Spansion Quad I/O */
 #define CR_QUAD_EN_PUYA		BIT(1)	/* Puya Quad I/O */
+#define CR_QUAD_EN_GD			BIT(1)	/* Gd Quad I/O */
 
 /* Status Register 2 bits. */
 #define SR2_QUAD_EN_BIT7	BIT(7)
@@ -417,5 +422,5 @@ struct spi_nor_hwcaps {
  * Return: 0 for success, others for failure.
  */
 int spi_nor_scan(struct spi_nor *nor);
-
+void spi_nor_reset_device(struct spi_nor *nor);
 #endif

@@ -86,7 +86,7 @@ __weak void board_quiesce_devices(void)
  */
 static void announce_and_cleanup(int fake)
 {
-	tick_printf("Starting kernel ...%s\n\n", fake ?
+	pr_emerg("Starting kernel ...%s\n\n", fake ?
 		"(fake run for tracing)" : "");
 	bootstage_mark_name(BOOTSTAGE_ID_BOOTM_HANDOFF, "start_kernel");
 #ifdef CONFIG_BOOTSTAGE_FDT
@@ -319,6 +319,10 @@ static void switch_to_el1(void)
 #include <linux/arm-smccc.h>
 #include <sunxi_board.h>
 
+int check_dtbo_idx(void);
+void *sunxi_support_ufdt(void *dtb_base, u32 dtb_len);
+
+
 #ifdef CONFIG_ARCH_SUNXI
 /* Subcommand: GO */
 static void boot_jump_linux(bootm_headers_t *images, int flag)
@@ -346,12 +350,26 @@ static void boot_jump_linux(bootm_headers_t *images, int flag)
 	bootstage_mark(BOOTSTAGE_ID_RUN_OS);
 
 	if (IMAGE_ENABLE_OF_LIBFDT && images->ft_len) {
-		r2 = CONFIG_SUNXI_FDT_ADDR;
+		r2 = env_get_hex("load_dtb_addr", CONFIG_SUNXI_FDT_ADDR);
+#ifdef CONFIG_SUNXI_ANDROID_OVERLAY
+		if (check_dtbo_idx() == 0) {
+			if (sunxi_support_ufdt((void *)images->ft_addr, fdt_totalsize(images->ft_addr)) == NULL) {
+				pr_err("sunxi android dto merge fail\n");
+			}
+		}
+#endif
 		memcpy((void*)r2, images->ft_addr, images->ft_len);
 	}
 	else
 		r2 = gd->bd->bi_boot_params;
 	debug("## Linux machid: %08lx, FDT addr: %08lx\n", machid, r2);
+#ifdef CONFIG_SUNXI_INITRD_ROUTINE
+	int ramdisk_sum = sunxi_generate_checksum((void *)env_get_hex("ramdisk_start", 0), env_get_hex("ramdisk_size", 0), 8, STAMP_VALUE);
+	if (ramdisk_sum != env_get_hex("ramdisk_sum", 0x5a5a)) {
+		pr_err("ramdisk checksum bad!!!\n");
+		do_reset(NULL, 0, 0, NULL);
+	}
+#endif
 	announce_and_cleanup(fake);
 
 	if (!fake) {

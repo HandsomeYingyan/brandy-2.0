@@ -55,16 +55,30 @@ int bmu_axp2101_set_power_off(void)
 	return 0;
 }
 
+/*
+	boot_source	0x20		help			return
+
+	power low	BIT0		boot button		AXP_BOOT_SOURCE_BUTTON
+	irq		BIT1		IRQ LOW			AXP_BOOT_SOURCE_IRQ_LOW
+	usb		BIT2		VBUS	insert		AXP_BOOT_SOURCE_VBUS_USB
+	charge		BIT3		charge to 3.3v		AXP_BOOT_SOURCE_CHARGER
+	battery		BIT4		battary in		AXP_BOOT_SOURCE_BATTERY
+*/
 int bmu_axp2101_get_poweron_source(void)
 {
 	uchar reg_value;
 	if (pmic_bus_read(AXP2101_RUNTIME_ADDR, AXP2101_PWRON_STATUS, &reg_value)) {
 		return -1;
 	}
-	if ((reg_value & 0x01) | (reg_value & 0x04))
-		return 1;
-	else
-		return 0;
+	switch (reg_value) {
+	case (1 << AXP_BOOT_SOURCE_BUTTON): return AXP_BOOT_SOURCE_BUTTON;
+	case (1 << AXP_BOOT_SOURCE_IRQ_LOW): return AXP_BOOT_SOURCE_IRQ_LOW;
+	case (1 << AXP_BOOT_SOURCE_VBUS_USB): return AXP_BOOT_SOURCE_VBUS_USB;
+	case (1 << AXP_BOOT_SOURCE_CHARGER): return AXP_BOOT_SOURCE_CHARGER;
+	case (1 << AXP_BOOT_SOURCE_BATTERY): return AXP_BOOT_SOURCE_BATTERY;
+	default: return -1;
+	}
+
 }
 
 int bmu_axp2101_set_coulombmeter_onoff(int onoff)
@@ -103,19 +117,36 @@ int bmu_axp2101_get_axp_bus_exist(void)
 int bmu_axp2101_get_battery_vol(void)
 {
 	u8 reg_value_h = 0, reg_value_l = 0;
-	int bat_vol;
+	int i, vtemp[3];
 
-	if (pmic_bus_read(AXP2101_RUNTIME_ADDR, AXP2101_BAT_AVERVOL_H6,
-			  &reg_value_h)) {
-		return -1;
+	for (i = 0; i < 3; i++) {
+		if (pmic_bus_read(AXP2101_RUNTIME_ADDR, AXP2101_BAT_AVERVOL_H6,
+				  &reg_value_h)) {
+			return -1;
+		}
+		if (pmic_bus_read(AXP2101_RUNTIME_ADDR, AXP2101_BAT_AVERVOL_L8,
+				  &reg_value_l)) {
+			return -1;
+		}
+		/*step 1mv*/
+		vtemp[i] = ((reg_value_h & 0x3F) << 8) | reg_value_l;
 	}
-	if (pmic_bus_read(AXP2101_RUNTIME_ADDR, AXP2101_BAT_AVERVOL_L8,
-			  &reg_value_l)) {
-		return -1;
+	if (vtemp[0] > vtemp[1]) {
+		vtemp[0] = vtemp[0] ^ vtemp[1];
+		vtemp[1] = vtemp[0] ^ vtemp[1];
+		vtemp[0] = vtemp[0] ^ vtemp[1];
 	}
-	/*step 1mv*/
-	bat_vol = ((reg_value_h & 0x3F) << 8) | reg_value_l;
-	return bat_vol;
+	if (vtemp[1] > vtemp[2]) {
+		vtemp[1] = vtemp[2] ^ vtemp[1];
+		vtemp[2] = vtemp[2] ^ vtemp[1];
+		vtemp[1] = vtemp[2] ^ vtemp[1];
+	}
+	if (vtemp[0] > vtemp[1]) {
+		vtemp[0] = vtemp[0] ^ vtemp[1];
+		vtemp[1] = vtemp[0] ^ vtemp[1];
+		vtemp[0] = vtemp[0] ^ vtemp[1];
+	}
+	return vtemp[1];
 }
 
 int bmu_axp2101_get_battery_capacity(void)

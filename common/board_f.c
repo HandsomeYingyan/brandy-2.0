@@ -38,6 +38,8 @@
 #include <asm/sections.h>
 #include <dm/root.h>
 #include <linux/errno.h>
+#include <spare_head.h>
+#include <sunxi_board.h>
 
 /*
  * Pointer to initial global data area
@@ -228,7 +230,11 @@ static int setup_mon_len(void)
 #elif defined(CONFIG_NIOS2) || defined(CONFIG_XTENSA)
 	gd->mon_len = CONFIG_SYS_MONITOR_LEN;
 #elif defined(CONFIG_NDS32) || defined(CONFIG_SH) || defined(CONFIG_RISCV)
-	gd->mon_len = (ulong)(&__bss_end) - (ulong)(&_start);
+	#ifdef CONFIG_ARCH_SUNXI
+	gd->mon_len = (ulong)&__bss_end - (ulong)__image_copy_start;
+	#else
+	gd->mon_len = (ulong)&__bss_end - (ulong)_start;
+	#endif
 #elif defined(CONFIG_SYS_MONITOR_BASE)
 	/* TODO: use (ulong)&__bss_end - (ulong)&__text_start; ? */
 	gd->mon_len = (ulong)&__bss_end - CONFIG_SYS_MONITOR_BASE;
@@ -328,7 +334,7 @@ static int reserve_round_4k(void)
 #ifdef CONFIG_ARM
 __weak int reserve_mmu(void)
 {
-#if !(defined(CONFIG_SYS_ICACHE_OFF) && defined(CONFIG_SYS_DCACHE_OFF))
+#if !(CONFIG_IS_ENABLED(SYS_ICACHE_OFF) && CONFIG_IS_ENABLED(SYS_DCACHE_OFF))
 	/* reserve TLB table */
 	gd->arch.tlb_size = PGTABLE_SIZE;
 	gd->relocaddr -= gd->arch.tlb_size;
@@ -456,6 +462,33 @@ static int reserve_global_data(void)
 	return 0;
 }
 
+static int reserve_dtbo(void)
+{
+	void *dtbo_base = (void *)(CONFIG_SYS_TEXT_BASE + SUNXI_DTBO_OFFSET);
+	if (!fdt_check_header(dtbo_base)) {
+		const u32 dtbo_pad_size = 0x1000;
+		u32 dtbo_size = ALIGN(fdt_totalsize(dtbo_base) + dtbo_pad_size, 32);
+		fdt_set_totalsize((void *)dtbo_base, dtbo_size);
+		gd->start_addr_sp -= dtbo_size;
+		gd->new_dtbo = map_sysmem(gd->start_addr_sp, dtbo_size);
+		memcpy(gd->new_dtbo, dtbo_base, dtbo_size);
+		debug("Reserving %d Bytes for DTBO at: %08lx\n",
+			  dtbo_size, gd->start_addr_sp);
+	}
+	return 0;
+}
+
+#ifdef CONFIG_OF_SEPARATE
+static int reserve_external_fdt(void)
+{
+	gd->fdt_ext_size = ALIGN(CONFIG_RESERVE_FDT_SIZE, 32);
+	gd->start_addr_sp -= gd->fdt_ext_size;
+	gd->new_ext_fdt = map_sysmem(gd->start_addr_sp, gd->fdt_ext_size);
+	debug("Reserving %lu Bytes for EXT FDT at: %08lx\n",
+		      gd->fdt_ext_size, gd->start_addr_sp);
+	return 0;
+}
+#endif
 
 static int reserve_fdt(void)
 {
@@ -467,10 +500,10 @@ static int reserve_fdt(void)
 	 */
 	if (gd->fdt_blob) {
 		/* fdt pad size: for modify device tree at u-boot shell.*/
-		const u32 fdt_pad_size = 0x1000;
+		__maybe_unused u32 fdt_pad_size = 0x1000;
 		//128K memory is reserved if separate DTB function is used
 #ifdef CONFIG_OF_SEPARATE
-		gd->fdt_size = ALIGN(0x20000, 32);
+		gd->fdt_size = ALIGN(CONFIG_RESERVE_FDT_SIZE, 32);
 #else
 		gd->fdt_size = ALIGN(fdt_totalsize(gd->fdt_blob) + fdt_pad_size, 32);
 #endif
@@ -480,6 +513,10 @@ static int reserve_fdt(void)
 		gd->new_fdt = map_sysmem(gd->start_addr_sp, gd->fdt_size);
 		debug("Reserving %lu Bytes for FDT at: %08lx\n",
 		      gd->fdt_size, gd->start_addr_sp);
+		reserve_dtbo();
+#ifdef CONFIG_OF_SEPARATE
+		reserve_external_fdt();
+#endif
 	}
 #endif
 
@@ -632,7 +669,7 @@ static int setup_reloc(void)
 	}
 
 #ifdef CONFIG_SYS_TEXT_BASE
-#ifdef ARM
+#if defined(CONFIG_ARM) || defined(CONFIG_RISCV)
 	gd->reloc_off = gd->relocaddr - (unsigned long)__image_copy_start;
 #elif defined(CONFIG_M68K)
 	/*
@@ -823,6 +860,9 @@ static const init_fnc_t init_sequence_f[] = {
 #endif
 #if defined(CONFIG_HARD_SPI)
 	init_func_spi,
+#endif
+#if defined(CONFIG_OPTEE25)
+	smc_init,
 #endif
 	announce_dram_init,
 	dram_init,		/* configure available RAM banks */

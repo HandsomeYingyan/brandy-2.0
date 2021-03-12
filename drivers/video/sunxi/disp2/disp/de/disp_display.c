@@ -1305,7 +1305,7 @@ s32 bsp_disp_lcd_set_panel_funs(char *name, disp_lcd_panel_fun *lcd_cfg)
 	u32 num_screens;
 	u32 screen_id;
 	u32 registered_cnt = 0;
-
+	u32 num_compat_cnt;
 	num_screens = bsp_disp_feat_get_num_screens();
 	for (screen_id = 0; screen_id < num_screens; screen_id++) {
 		lcd = disp_get_lcd(screen_id);
@@ -1317,7 +1317,18 @@ s32 bsp_disp_lcd_set_panel_funs(char *name, disp_lcd_panel_fun *lcd_cfg)
 			}
 		}
 	}
-
+	/*now only support lcd0*/
+	num_compat_cnt = disp_get_compat_lcd_panel_num(0);
+	for (screen_id = 0; screen_id < num_compat_cnt; screen_id++) {
+		lcd = disp_get_lcd_compat(0, screen_id);
+		if (lcd && (lcd->set_panel_func)) {
+			if (!lcd->set_panel_func(lcd, name, lcd_cfg)) {
+				gdisp.lcd_registered[screen_id] = 1;
+				registered_cnt++;
+				DE_INF("panel driver %s register for compatible usage\n", name);
+			}
+		}
+	}
 	return 0;
 }
 
@@ -1449,6 +1460,22 @@ s32 bsp_disp_lcd_power_disable(u32 disp, u32 power_id)
 
 	if (lcd && lcd->power_disable) {
 		ret = lcd->power_disable(lcd, power_id);
+	}
+
+	return ret;
+}
+
+s32 bsp_disp_lcd_switch_compat_panel(u32 disp, u32 index)
+{
+	s32 ret = -1;
+	struct disp_device *lcd;
+
+	lcd = disp_get_lcd(disp);
+	if (!lcd)
+		return ret;
+
+	if (lcd && lcd->switch_compat_panel) {
+		ret = lcd->switch_compat_panel(lcd, index);
 	}
 
 	return ret;

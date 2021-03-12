@@ -51,6 +51,7 @@
 /* default not define*/
 //#define OFFLINE_MULTI_MODE
 #define OFFLINE_SINGLE_MODE
+/* #define DRIVER_REMAP_WAVEFILE */
 
 struct eink_panel_info {
 	u32	width;
@@ -197,7 +198,7 @@ struct timing_ctrl_manager {
 	struct eink_panel_func	panel_func;
 
 	s32 (*enable)(struct timing_ctrl_manager *mgr);
-	void (*disable)(struct timing_ctrl_manager *mgr);
+	int (*disable)(struct timing_ctrl_manager *mgr);
 	s32 (*set_open_func)(struct timing_ctrl_manager *mgr, EINK_PANEL_FUNC func, u32 delay);
 	s32 (*set_close_func)(struct timing_ctrl_manager *mgr, EINK_PANEL_FUNC func, u32 delay);
 };
@@ -316,6 +317,7 @@ struct index_manager {
 struct eink_manager {
 	u32				irq_num;
 	u32				panel_temperature;
+	int				vcom_voltage;
 
 	volatile u32			upd_pic_accept_flag;
 	wait_queue_head_t		upd_pic_accept_queue;
@@ -327,6 +329,7 @@ struct eink_manager {
 	struct mutex			enable_lock;
 	struct clk			*ee_clk;
 	struct clk			*panel_clk;
+	struct clk			*panel_clk_parent;
 	struct eink_panel_info		panel_info;
 	struct timing_info		timing_info;
 	struct pipe_manager		*pipe_mgr;
@@ -362,6 +365,7 @@ extern s32 queue_wavedata_buffer(struct wavedata_queue *queue);
 extern int eink_get_sys_config(struct init_para *para);
 extern s32 fmt_convert_mgr_init(struct init_para *para);
 extern int eink_mgr_init(struct init_para *para);
+extern void eink_mgr_exit(struct eink_manager *mgr);
 extern int buf_mgr_init(struct eink_manager *eink_mgr);
 extern int index_mgr_init(struct eink_manager *eink_mgr);
 extern int pipe_mgr_init(struct eink_manager *eink_mgr);
@@ -373,6 +377,8 @@ extern struct eink_manager *get_eink_manager(void);
 extern struct fmt_convert_manager *get_fmt_convert_mgr(unsigned int id);
 extern struct timing_ctrl_manager *get_timing_ctrl_mgr(void);
 extern int eink_get_wf_data(enum upd_mode mode, u32 temp, u32 *total_frames,
+						unsigned long *wf_paddr, unsigned long *wf_vaddr);
+extern int get_waveform_data(enum upd_mode mode, u32 temp, u32 *total_frames,
 						unsigned long *wf_paddr, unsigned long *wf_vaddr);
 extern int init_dec_wav_buffer(struct wavedata_queue *queue,
 				struct eink_panel_info *info,

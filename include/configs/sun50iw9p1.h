@@ -14,7 +14,7 @@
 
 #ifdef CONFIG_USB_EHCI_HCD
 #define CONFIG_USB_EHCI_SUNXI
-#define CONFIG_USB_MAX_CONTROLLER_COUNT 1
+#define CONFIG_USB_MAX_CONTROLLER_COUNT 4
 #endif
 
 /* sram layout*/
@@ -33,6 +33,8 @@
 
 #define GICD_BASE		0x3021000
 #define GICC_BASE		0x3022000
+
+#define IR_BASE			SUNXI_R_IR_RX_BASE
 
 /*
  * Include common sunxi configuration where most the settings are

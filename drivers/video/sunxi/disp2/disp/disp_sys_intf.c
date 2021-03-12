@@ -18,7 +18,7 @@
 #include "disp_sys_intf.h"
 #include "asm/io.h"
 
-
+extern int sunxi_partition_get_partno_byname(const char *part_name);
 /* cache flush flags */
 #define  CACHE_FLUSH_I_CACHE_REGION       0
 #define  CACHE_FLUSH_D_CACHE_REGION       1
@@ -26,7 +26,7 @@
 #define  CACHE_CLEAN_D_CACHE_REGION       3
 #define  CACHE_CLEAN_FLUSH_D_CACHE_REGION 4
 #define  CACHE_CLEAN_FLUSH_CACHE_REGION   5
-
+#define  LCD_CONFIG_SIZE                  10
 void mutex_destroy(struct mutex* lock)
 {
 	return;
@@ -220,6 +220,15 @@ static disp_fdt_node_map_t g_disp_fdt_node_map[] ={
 #endif
 	{FDT_LCD0_PATH, -1},
 	{FDT_LCD1_PATH, -1},
+	{"/soc/lcd0_1", -1},
+	{"/soc/lcd0_2", -1},
+	{"/soc/lcd0_3", -1},
+	{"/soc/lcd0_4", -1},
+	{"/soc/lcd0_5", -1},
+	{"/soc/lcd0_6", -1},
+	{"/soc/lcd0_7", -1},
+	{"/soc/lcd0_8", -1},
+	{"/soc/lcd0_9", -1},
 #ifdef CONFIG_DISP2_TV_AC200
 	{FDT_AC200_PATH, -1},
 #endif
@@ -263,7 +272,242 @@ int  disp_fdt_nodeoffset(char *main_name)
 	}
 	return -1;
 }
+/*now only support lcd0*/
+int disp_get_compat_lcd_panel_num(int disp)
+{
+	char dts_node_path[] = "/soc/lcd0_0";
+	int node;
+	int i;
+	int count = 0;
+	if (disp > 0)
+		return 0;
+	for (i = 1; i <= 9; i++) {
+		dts_node_path[10] = '0' + i;
+		node = fdt_path_offset(working_fdt, dts_node_path);
+		if (node < 0) {
+			break;
+		}
+		count++;
+	}
+		return count;
+}
+/*
+*******************************************************************************
+*                     get_lcd_param_index_from_flash
+*
+* Description:
+*    Get lcd_param_index from "ULI/factory/lcd_param_index.txt" in private partition.
+*
+* Parameters:
+*    void
+*
+* Return value:
+*    >0 for index of lcd param
+*    -1 for err
+* note:
+*
+*
+*******************************************************************************
+*/
 
+int get_lcd_param_index_from_flash(void)
+{
+	char *argv[6];
+	char part_num[16] = {0};
+	char len[16] = {0};
+	char read_addr[32] = {0};
+	char file_name[32] = "ULI/factory/lcd_param_index.txt";
+	int partno = -1;
+	char *buf;
+	unsigned int lcd_param_index;
+	int ret = -1;
+	partno = sunxi_partition_get_partno_byname("private");
+	if (partno < 0) {
+		pr_error("Get private partition number fail, please check if it is exist\n");
+		ret = -1;
+		goto exit;
+	}
+	buf = kmalloc(LCD_CONFIG_SIZE, GFP_KERNEL | __GFP_ZERO);
+	snprintf(part_num, 16, "0:%x", partno);
+	snprintf(len, 16, "%ld", (ulong)LCD_CONFIG_SIZE);
+	snprintf(read_addr, 32, "%lx", (ulong)buf);
+	argv[0] = "fatload";
+	argv[1] = "sunxi_flash";
+	argv[2] = part_num;
+	argv[3] = read_addr;
+	argv[4] = file_name;
+	argv[5] = len;
+	if (do_fat_fsload(0, 0, 5, argv)) {
+		pr_error("do_fat_fsload for lcd config failed\n");
+		ret = -1;
+		goto exit_free;
+	}
+	if (!strncmp("lcd", buf, 3)) {
+		lcd_param_index = simple_strtoul(buf + 3, NULL, 10);
+		ret = lcd_param_index;
+		if (lcd_param_index > 9) {
+			pr_error("error: lcd_param_index must less than 10\n");
+			ret = -1;
+			goto exit_free;
+		}
+
+	} else {
+		pr_error("lcd_param_index format err, should be lcdn, n=0,1,2,3...\n");
+		ret = -1;
+	}
+exit_free:
+	kfree(buf);
+exit:
+return ret;
+
+}
+
+/*
+*******************************************************************************
+*                     disp_update_lcd_param
+*
+* Description:
+*    Update lcd0 param with lcd0_<lcd_param_index> in dts for driver to reopen lcd driver.
+*
+* Parameters:
+*    lcd_param_index : input, the index of compatible lcd param.
+*
+* Return value:
+*    0 for success
+*    -1 for err
+* note:
+*    if lcd_param_index = 0, we will use lcd0 param, and make no update.
+*      lcd_param_index must <= 9.
+*    lcd_param_index = -1 means using previous lcd_param_index;
+*
+*******************************************************************************
+*/
+int disp_update_lcd_param(int lcd_param_index)
+{
+	int node;
+	int level = 0;
+	static int pre_index;
+	uint32_t tag;
+	int  nodeoffset;
+	int  nextoffset;
+	const struct fdt_property *fdt_prop;
+	const char *pathp;
+	int prop_len;
+	char dts_node_path[] = "/soc/lcd0_0";
+	int len;
+	int depth = 1;
+	const void *nodep;
+	unsigned int success_count = 0;
+	unsigned int retry_skip_count = 0;
+	u8 prop_tmp[32] = {0};
+	u8 prop_name_tmp[32] = {0};
+
+	if (lcd_param_index == -1) {
+		char *ctp_path;
+		char val[2];
+		int nodeoff;
+		lcd_param_index = pre_index;
+
+		// set ctp fw idx
+		nodeoff = fdt_path_offset(working_fdt, "/aliases");
+		fdt_getprop_string(working_fdt, nodeoff, "ctp", &ctp_path);
+		snprintf(val, 2, "%d", lcd_param_index);
+		fdt_find_and_setprop(working_fdt, ctp_path, "ctp_fw_idx", val, 2, 1);
+	}
+	dts_node_path[10] = '0' + lcd_param_index;
+	if (lcd_param_index == 0) {
+		/*use default lcd0 param*/
+		return 0;
+	}
+
+	pre_index = lcd_param_index;
+	nodeoffset = fdt_path_offset(working_fdt, dts_node_path);
+	node = fdt_path_offset(working_fdt, "lcd0");
+
+	if (nodeoffset < 0 || node < 0) {
+		/*
+		 * Not found or something else bad happened.
+		 */
+		pr_error("libfdt fdt_path_offset() for lcd\n");
+		return -1;
+	}
+
+	while (level >= 0) {
+		tag = fdt_next_tag(working_fdt, nodeoffset, &nextoffset);
+		switch (tag) {
+		case FDT_BEGIN_NODE:
+			pathp = fdt_get_name(working_fdt, nodeoffset, NULL);
+			if (level <= depth) {
+				if (pathp == NULL)
+					pathp = "/* NULL pointer error */";
+				if (*pathp == '\0')
+					pathp = "/";	/* root is nameless */
+			}
+			level++;
+			break;
+		case FDT_END_NODE:
+			level--;
+			if (level == 0) {
+				level = -1;		/* exit the loop */
+			}
+			break;
+		case FDT_PROP:
+			if (success_count < retry_skip_count) {
+				success_count++;
+				break;
+			}
+			fdt_prop = fdt_offset_ptr(working_fdt, nodeoffset,
+					sizeof(*fdt_prop));
+			pathp    = fdt_string(working_fdt,
+					fdt32_to_cpu(fdt_prop->nameoff));
+			prop_len      = fdt32_to_cpu(fdt_prop->len);
+			nodep    = fdt_prop->data;
+			if (prop_len < 0) {
+				printf ("libfdt fdt_getprop(): %s\n",
+					fdt_strerror(prop_len));
+				return -1;
+			} else if (prop_len == 0) {
+				/* the property has no value */
+				if (level <= depth)
+					printf("NULL value for lcd0 param\n");
+			} else {
+				if (level <= depth) {
+					/*update this prop for lcd0*/
+					fdt_getprop(working_fdt, node, pathp, &len);
+					success_count++;
+					if (len != prop_len) {
+						/*need memcpy and update node offset to avoid modify by fdt_setprop.*/
+						level = 0;
+						retry_skip_count = success_count;
+						success_count = 0;
+						memcpy(prop_name_tmp, pathp, strlen(pathp)+1);
+						memcpy(prop_tmp, nodep, prop_len);
+						fdt_setprop(working_fdt, node, pathp, prop_tmp, prop_len);
+						nodeoffset = fdt_path_offset(working_fdt, dts_node_path);
+						node = fdt_path_offset(working_fdt, "lcd0");
+						continue;
+					} else {
+						fdt_setprop(working_fdt, node, pathp, nodep, prop_len);
+					}
+				}
+			}
+			break;
+		case FDT_NOP:
+			break;
+		case FDT_END:
+			disp_fdt_init();
+			return 0;
+		default:
+			if (level <= depth)
+				printf("Unknown tag 0x%08X\n", tag);
+			return 0;
+		}
+		nodeoffset = nextoffset;
+	}
+
+	disp_fdt_init();
+	return 0;
+}
 /* type: 0:invalid, 1: int; 2:str, 3: gpio */
 int disp_sys_script_get_item(char *main_name, char *sub_name, int value[], int type)
 {
@@ -289,14 +533,25 @@ int disp_sys_script_get_item(char *main_name, char *sub_name, int value[], int t
                   memcpy((void *)value, str, strlen(str) + 1);
                 }
         } else if (3 == type) {
-		if(fdt_get_one_gpio_by_offset(node, sub_name, &gpio_info) >= 0) {
-			gpio_list = (disp_gpio_set_t  *)value;
-			gpio_list->port = gpio_info.port;
-			gpio_list->port_num = gpio_info.port_num;
-			gpio_list->mul_sel = gpio_info.mul_sel;
-			gpio_list->drv_level = gpio_info.drv_level;
-			gpio_list->pull = gpio_info.pull;
-			gpio_list->data = gpio_info.data;
+		ret = fdt_get_one_gpio_by_offset(node, sub_name, &gpio_info);
+		if (ret >= 0) {
+			if (ret == 4) {
+				gpio_list = (disp_gpio_set_t  *)value;
+				gpio_list->port = gpio_info.port;
+				gpio_list->port_num = gpio_info.port_num;
+				gpio_list->mul_sel = 1;
+				gpio_list->drv_level = 1;
+				gpio_list->pull = 0;
+				gpio_list->data = gpio_info.mul_sel;
+			} else {
+				gpio_list = (disp_gpio_set_t  *)value;
+				gpio_list->port = gpio_info.port;
+				gpio_list->port_num = gpio_info.port_num;
+				gpio_list->mul_sel = gpio_info.mul_sel;
+				gpio_list->drv_level = gpio_info.drv_level;
+				gpio_list->pull = gpio_info.pull;
+				gpio_list->data = gpio_info.data;
+			}
 
 			memcpy(gpio_info.gpio_name, sub_name, strlen(sub_name)+1);
 			debug("%s.%s gpio=%d,mul_sel=%d,data:%d\n",main_name, sub_name, gpio_list->gpio, gpio_list->mul_sel, gpio_list->data);
@@ -381,9 +636,9 @@ int disp_sys_pin_set_state(char *dev_name, char *name)
 	int ret = -1;
 
 	if (!strcmp(name, DISP_PIN_STATE_ACTIVE))
-		ret = fdt_set_all_pin("lcd0", "pinctrl-0");
+		ret = fdt_set_all_pin(dev_name, "pinctrl-0");
 	else
-		ret = fdt_set_all_pin("lcd0_suspend", "pinctrl-1");
+		ret = fdt_set_all_pin(dev_name, "pinctrl-1");
 
 	if (ret != 0)
 		printf("%s, fdt_set_all_pin, ret=%d\n", __func__, ret);

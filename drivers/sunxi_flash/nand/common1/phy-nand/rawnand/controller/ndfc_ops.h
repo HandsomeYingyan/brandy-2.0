@@ -71,9 +71,9 @@ s32 ndfc_set_spare_data(struct nand_controller_info *nctri, u8 *sbuf, u32 udata_
 s32 ndfc_set_user_data_len(struct nand_controller_info *nctri);
 s32 ndfc_set_user_data_len_cfg(struct nand_controller_info *nctri, u32 udata_cnt);
 s32 ndfc_set_user_data_len_cfg_4bytesper1k(struct nand_controller_info *nctri, u32 udata_cnt);
-int ndfc_is_toogle_interface(struct nand_controller_info *nctri);
+int ndfc_is_toggle_interface(struct nand_controller_info *nctri);
 int ndfc_set_legacy_interface(struct nand_controller_info *nctri);
-int ndfc_set_toogle_interface(struct nand_controller_info *nctri);
+int ndfc_set_toggle_interface(struct nand_controller_info *nctri);
 int ndfc_set_dummy_byte(struct nand_controller_info *nctri, int dummy_byte);
 void ndfc_enable_dummy_byte(struct nand_controller_info *nctri);
 void ndfc_disable_dummy_byte(struct nand_controller_info *nctri);

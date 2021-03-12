@@ -269,7 +269,7 @@ void print_mmc_devices(char separator)
 		else
 			mmc_type = NULL;
 
-		printf("%s: %d", m->cfg->name, mmc_get_blk_desc(m)->devnum);
+		pr_msg("%s: %d", m->cfg->name, mmc_get_blk_desc(m)->devnum);
 		if (mmc_type)
 			printf(" (%s)", mmc_type);
 	}

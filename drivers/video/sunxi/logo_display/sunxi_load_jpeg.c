@@ -147,6 +147,7 @@ err_out:
 		fb_unlock(fb_id, NULL, 0);
 	return -1;
 }
+#endif
 
 static int add_bmp_header(struct boot_fb_private *fb)
 {
@@ -165,15 +166,18 @@ static int add_bmp_header(struct boot_fb_private *fb)
 	memcpy(fb->base, &bmp_header, sizeof(struct bmp_header));
 	return 0;
 }
-#endif
+
 
 static int read_jpeg(const char *filename, char *buf, unsigned int buf_size)
 {
-#ifndef BOOTLOGO_PARTITION_NAME
-#define BOOTLOGO_PARTITION_NAME "bootlogo"
-#endif
 
-#ifdef CONFIG_CMD_FAT
+#ifdef CONFIG_SUNXI_SPINOR_JPEG
+	int size;
+	unsigned int start_block, nblock;
+	sunxi_partition_get_info_byname(filename, &start_block, &nblock);
+	size = sunxi_flash_read(start_block, nblock, (void *)buf);
+	return size > 0 ? (size << 10) : 0;
+#elif CONFIG_CMD_FAT
 	char *argv[6];
 	char part_num[16] = {0};
 	char len[16] = {0};
@@ -204,21 +208,12 @@ static int read_jpeg(const char *filename, char *buf, unsigned int buf_size)
 		return env_get_hex("filesize", 0);
 	else
 		return 0;
-#else
-	int size;
-	unsigned int start_block, nblock;
-
-	start_block =
-	    sunxi_partition_get_offset_byname(BOOTLOGO_PARTITION_NAME);
-	nblock = sunxi_partition_get_size_byname(BOOTLOGO_PARTITION_NAME);
-	size = sunxi_flash_read(start_block, nblock, (void *)buf);
-	return size > 0 ? (size << 10) : 0;
 #endif
 }
 
 static int get_disp_fdt_node(void)
 {
-	static int fdt_node = -1;
+	int fdt_node = -1;
 
 	if (0 <= fdt_node)
 		return fdt_node;
@@ -334,7 +329,7 @@ int sunxi_jpeg_display(const char *filename)
 		printf("fb.base is null !!!");
 		return -1;
 	}
-	char *tmp = fb.base + sizeof(struct bmp_header);
+	char *tmp = fb.base;
 	tinyjpeg_set_components(jdec, (unsigned char **)&(tmp), 1);
 
 	if (32 == fb.bpp)
@@ -350,8 +345,13 @@ int sunxi_jpeg_display(const char *filename)
 #ifdef CONFIG_BOOT_GUI
 	add_bmp_header(&fb);
 	return show_bmp_on_fb(fb.base, FB_ID_0);
-#else
+#elif CONFIG_SUNXI_SPINOR_JPEG
+	char disp_reserve[80];
+	snprintf(disp_reserve, 80, "%d,0x%x",
+		(fb.stride * fb.height + sizeof(struct bmp_header)), (uint)tmp);
+	env_set("disp_reserve", disp_reserve);
 	fb.base = tmp ;
+	add_bmp_header(&fb);
 	save_fb_para_to_kernel(&fb);
 #endif
 

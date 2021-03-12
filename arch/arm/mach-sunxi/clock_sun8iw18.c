@@ -84,8 +84,8 @@ int clock_set_corepll(int frequency)
 
 	if (frequency == clock_get_corepll())
 		return 0;
-	else if (frequency >= 1200)
-		frequency = 1200;
+	else if (frequency >= 1008)
+		frequency = 1008;
 
 
 	/* switch to 24M*/

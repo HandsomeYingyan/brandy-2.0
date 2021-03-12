@@ -27,6 +27,8 @@
 #define NAND_MFR_FUJITSU 0x04
 #define NAND_MFR_HYNIX 0xad
 #define NAND_MFR_INTEL 0x89
+#define NAND_MFR_GIGA 0xc8
+#define NAND_MFR_MXIC 0xc2
 #define NAND_MFR_MACRONIX 0xc2
 #define NAND_MFR_MICRON 0x2c
 #define NAND_MFR_NATIONAL 0x8f
@@ -36,7 +38,30 @@
 #define NAND_MFR_STMICRO 0x20
 #define NAND_MFR_TOSHIBA 0x98
 #define NAND_MFR_WINBOND 0xef
+#define NAND_MFR_FORESEE 0xec
 
+/*
+ * NAND Flash Manufacture name
+ * */
+#define SPANSION_NAME "spansion"
+#define ATO_NAME "ato"
+#define EON_NAME "eon"
+#define ESMT_NAME "esmt"
+#define FUJITSU_NAME "fujitsu"
+#define HYNIX_NAME "hynix"
+#define INTEL_NAME "intel"
+#define MACRONIX_NAME "macronix"
+#define GIGA_NAME "giga"
+#define MXIC_NAME "mxic"
+#define MICRON_NAME "micron"
+#define NATIONAL_NAME "national"
+#define RENESAS_NAME "renesas"
+#define SAMSUNG_NAME "samsung"
+#define SANDISK_NAME "sandisk"
+#define STMICRO_NAME "stmicro"
+#define TOSHIBA_NAME "toshiba"
+#define WINBOND_NAME "winbond"
+#define FORESEE_NAME "foresee"
 
 /**
  *  write boot0 special requirement
@@ -91,19 +116,15 @@
 /*nand flash support to read reclaim Operation*/
 #define NAND_READ_RECLAIM (1 << 21)
 /*
- * nand flash VccQ need 1.8v, it affect to the DC input high/low voltage
- * reference flash datasheet electrical specifications - DC characteristics
- * and operating characteristrics
- * */
-//#define NAND_VCCQ_1P8V (1 << 22)
-/* nand flash support to change timing mode according to ONFI 3.0*/
-#define NAND_TIMING_MODE (1 << 24)
-/*nand flash support to set ddr2 specific feature according to ONFI 3.0 or Toggle DDR2*/
-#define NAND_DDR2_CFG (1 << 25)
-/*nand flash support to set io driver strength according to ONFI 2.x/3.0 or Toggle DDR1/DDR2*/
-#define NAND_IO_DRIVER_STRENGTH (1 << 26)
-/* nand flash support to set vendor's specific configuration*/
-#define NAND_VENDOR_SPECIFIC_CFG (1 << 27)
+ * micron: different flash have the same id
+ */
+#define NAND_FIND_ID_TAB_BY_NAME (1 << 22)
+
+/*it use in the case: name(read from flash) is not the unique,
+ * but id table 1 is conifure to NAND_FIND_ID_TAB_BY_NAME. in this case,
+ * you can use NAND_FIND_IN_TAB_BY_NAME_CANCEL to cancel name matching in id table 2.
+ * id table 2 is the same with id table1 except the optional*/
+#define NAND_FIND_ID_TAB_BY_NAME_CANCEL (1 << 23)
 /* nand flash support onfi's sync reset*/
 #define NAND_ONFI_SYNC_RESET_OP (1 << 28)
 /* nand flash support toggle interface only, and do not support switch between legacy and toggle*/
@@ -113,7 +134,7 @@
 /*nand flash support cache for lsb page data untill shared page data is writed. (only for 3D nand)*/
 #define NAND_PAIRED_PAGE_SYNC (1 << 31)
 
-
+/*ddr opt*/
 /*nand flash support to set ddr2 specific feature according to ONFI 3.0*/
 #define NAND_ONFI_DDR2_CFG (1 << 0)
 /*nand flash support to set io driver strength according to ONFI 2.x/3.0*/
@@ -159,13 +180,13 @@
 #define BCH_44 (0x05)
 #define BCH_48 (0x06)
 #define BCH_52 (0x07)
-#define BCH_56 (0x10)
-#define BCH_60 (0x11)
-#define BCH_64 (0x12)
-#define BCH_68 (0x13)
-#define BCH_72 (0x14)
-#define BCH_76 (0x15)
-#define BCH_80 (0x16)
+#define BCH_56 (0x08)
+#define BCH_60 (0x09)
+#define BCH_64 (0x0A)
+#define BCH_68 (0x0B)
+#define BCH_72 (0x0C)
+#define BCH_76 (0x0D)
+#define BCH_80 (0x0E)
 
 /**
  * read_retry_type
@@ -181,15 +202,15 @@
  */
 
 /**
- * option_physic_op_no
+ * cmd_set_no
  * flash operation command set number
  * if rawnand_ids.c don't have your flash operation set in phy_op_para table,
  * you should add by yourself,detail see the define of nand_phy_op_par struction
  */
-#define OP_SET_0 (0)
-#define OP_SET_1 (1)
-#define OP_SET_2 (2)
-#define OP_SET_3 (3)
+#define CMD_SET_0 (0)
+#define CMD_SET_1 (1)
+#define CMD_SET_2 (2)
+#define CMD_SET_3 (3)
 
 
 /*
@@ -217,6 +238,8 @@
 #define MICRON_0x40_LSB_PAGE (0x40 << LSB_PAGE_POS)
 #define MICRON_0x41_LSB_PAGE (0x41 << LSB_PAGE_POS)
 #define MICRON_0x42_LSB_PAGE (0x42 << LSB_PAGE_POS)
+#define MICRON_0x43_LSB_PAGE (0x43 << LSB_PAGE_POS)
+#define MICRON_0x44_LSB_PAGE (0x44 << LSB_PAGE_POS)
 
 /**
  * nand_id_tbl_info: nand id table information interface set
@@ -248,7 +271,8 @@ typedef int (*lsb_page_t)(__u32 no);
 extern lsb_page_t chose_lsb_func(__u32 no);
 
 
-struct sunxi_nand_flash_device *sunxi_search_id(unsigned char *id);
+struct sunxi_nand_flash_device *sunxi_search_id(struct nand_chip_info *nci,
+		unsigned char *id);
 
 #if 0
 static inline char *dev_info_name(struct nand_chip_info *chip)
@@ -387,4 +411,5 @@ static inline unsigned int dev_info_access_high_freq(struct nand_chip_info
 	return info->access_high_freq;
 }
 #endif
+extern u32 nand_fdt_get_uint(const char *path, const char *prop_name);
 #endif /*RAWNAND_IDS_H*/

@@ -75,6 +75,8 @@ extern int board_display_eink_update(char *name, __u32 update_mode);
 /* extern int board_display_eink_panel_release(void); */
 extern int eink_driver_init(void);
 extern int sunxi_eink_fresh_image(char *name, __u32 update_mode);
+extern int tps65185_modules_init(void);
+extern int tps65185_init(void);
 extern int borad_display_get_screen_width(void);
 extern int borad_display_get_screen_height(void);
 extern void board_display_setenv(char *data);
@@ -102,6 +104,8 @@ extern long disp_ioctl(void *hd, unsigned int cmd, void *arg);
 
 extern int board_init(void);
 extern int sunxi_bmp_load(char *name);
+int sunxi_nsi_init(void);
+int sunxi_parsed_specific_string(char *intput_string, char output_para[][16], char space_character, char skip_character);
 
 extern int change_to_debug_mode(void);
 #ifdef CONFIG_GENERIC_MMC
@@ -145,6 +149,8 @@ extern char *set_bootcmd_from_misc(int mode, char *bootcmd);
 
 extern void set_boot_work_mode(int work_mode);
 extern int get_boot_work_mode(void);
+extern void set_boot_debug_mode(int debug_mode);
+extern int get_boot_debug_mode(void);
 extern int get_boot_storage_type_ext(void);
 extern int get_boot_storage_type(void);
 extern void set_boot_storage_type(int);
@@ -187,8 +193,9 @@ extern int sunxi_set_cpu_off(void);
 
 extern int cleanup_before_powerdown(void);
 void sunxi_dump(void *addr, unsigned int size);
+int sunxi_replace_fdt_v2(void);
 
-extern uint sunxi_generate_checksum(void *buffer, uint length, uint src_sum);
+extern uint sunxi_generate_checksum(void *buffer, uint length, uint div, uint src_sum);
 extern int sunxi_verify_checksum(void *buffer, uint length, uint src_sum);
 
 /* usb */
@@ -204,7 +211,9 @@ int sunxi_boot_image_get_embbed_cert_len(const void *hdr);
 int sunxi_android_boot(const char *image_name, ulong os_load_addr);
 
 int do_box_standby(void);
+int atf_box_standby(void);
 int check_ir_boot_recovery(void);
+int check_recovery_key(void);
 void sunxi_respond_ir_key_action(void);
 int sunxi_boot_init_gpio(void);
 int sunxi_bmp_decode_from_compress(unsigned char *dst_buf,
@@ -219,8 +228,32 @@ extern void board_mmc_pre_init(int card_num);
 extern struct mmc *sunxi_mmc_init(int sdc_no);
 extern int sunxi_mmcno_to_devnum(int sdc_no);
 extern int sunxi_flash_write_end(void);
+int board_env_late_init(void);
+
+#ifdef CONFIG_SUNXI_OVERLAY
+int sunxi_overlay_apply_merged(void *dtb_base, void *dtbo_base);
+#else
+static inline int sunxi_overlay_apply_merged(void *dtb_base, void *dtbo_base) {return -1; }
+#endif
+
+#ifdef CONFIG_SUNXI_SWITCH_SYSTEM
+int sunxi_auto_switch_system(void);
+int sunxi_damage_switch_system(void);
+#endif
+
+#ifdef CONFIG_SUNXI_UPDATE_REMIND
+void sunxi_update_remind(void);
+#endif
 
 /* arisc */
 extern int sunxi_arisc_probe(void);
+
+#ifdef CONFIG_XTENSA_DSP
+int sunxi_dsp_init(u32 img_addr, u32 run_ddr, u32 dsp_id);
+#endif
+
+#ifdef CONFIG_SUNXI_USB_DETECT
+int sunxi_usb_detect(void);
+#endif
 
 #endif /*_SUNXI_BOARD_H_ */

@@ -15,8 +15,8 @@
 #include <malloc.h>
 #include <sunxi_board.h>
 #include <fdt_support.h>
-//#include "sprite_cartoon.h"
 #include "sunxi_flash.h"
+#include "./cartoon/sprite_cartoon.h"
 /*
 ************************************************************************************************************
 *
@@ -135,15 +135,18 @@ int sunxi_card_sprite_main(int workmode, char *name)
 	//获取当前是量产介质是nand或者卡
 	production_media = get_boot_storage_type();
 	//启动动画显示
-	//	sprite_cartoon_create(processbar_direct);
+#ifdef CONFIG_SUNXI_SPRITE_CARTOON
+		sprite_cartoon_create(processbar_direct);
+#endif
 	//检查固件合法性
 	if (sprite_card_firmware_probe(name)) {
 		printf("sunxi sprite firmware probe fail\n");
 
 		return -1;
 	}
-
-	//	sprite_cartoon_upgrade(5);
+#ifdef CONFIG_SUNXI_SPRITE_CARTOON
+		sprite_cartoon_upgrade(5);
+#endif
 	tick_printf("firmware probe ok\n");
 	//获取dl_map文件，用于指引下载的数据
 	tick_printf("fetch download map\n");
@@ -181,7 +184,9 @@ int sunxi_card_sprite_main(int workmode, char *name)
 
 		return -1;
 	}
-	//	sprite_cartoon_upgrade(10);
+#ifdef CONFIG_SUNXI_SPRITE_CARTOON
+		sprite_cartoon_upgrade(10);
+#endif
 	tick_printf("begin to download part\n");
 	//开始烧写分区
 	if (sunxi_sprite_deal_part(dl_map)) {
@@ -190,8 +195,10 @@ int sunxi_card_sprite_main(int workmode, char *name)
 		return -1;
 	}
 	tick_printf("successed in downloading part\n");
-	//	sprite_cartoon_upgrade(80);
-	sunxi_sprite_exit(1);
+#ifdef CONFIG_SUNXI_SPRITE_CARTOON
+		sprite_cartoon_upgrade(80);
+#endif
+	get_boot_storage_type() == STORAGE_NAND ? sunxi_sprite_exit(1) : 0;
 
 	if (sunxi_sprite_deal_uboot(production_media)) {
 		printf("sunxi sprite error : download uboot error\n");
@@ -199,15 +206,18 @@ int sunxi_card_sprite_main(int workmode, char *name)
 		return -1;
 	}
 	tick_printf("successed in downloading uboot\n");
-	//	sprite_cartoon_upgrade(90);
+#ifdef CONFIG_SUNXI_SPRITE_CARTOON
+		sprite_cartoon_upgrade(90);
+#endif
 	if (sunxi_sprite_deal_boot0(production_media)) {
 		printf("sunxi sprite error : download boot0 error\n");
 
 		return -1;
 	}
 	tick_printf("successed in downloading boot0\n");
-	//	sprite_cartoon_upgrade(100);
-
+#ifdef CONFIG_SUNXI_SPRITE_CARTOON
+		sprite_cartoon_upgrade(100);
+#endif
 	printf("CARD OK\n");
 	tick_printf("sprite success \n");
 	//烧写结束

@@ -168,10 +168,15 @@ int de_ccsc_init(disp_bsp_init_para *para)
 				}
 			}
 
-			base =
-			    para->reg_base[DISP_MOD_DE] + (screen_id + 1)
+#if defined(CONFIG_INDEPENDENT_DE)
+			base = para->reg_base[DISP_MOD_DE + screen_id] + (screen_id + 1)
 				* 0x00100000 + base_ofst;
-
+			if (screen_id)
+				base = base - 0x00100000;
+#else
+			base = para->reg_base[DISP_MOD_DE] + (screen_id + 1)
+				* 0x00100000 + base_ofst;
+#endif
 			memory =
 			    kmalloc(sizeof(struct __csc_reg_t),
 					    GFP_KERNEL | __GFP_ZERO);
@@ -193,12 +198,17 @@ int de_ccsc_init(disp_bsp_init_para *para)
 			if (vep_support[screen_id][ch_id]) {
 				base_ofst = (ch_id == 0) ?
 				    ICSC0_OFST : ICSC1_OFST;
-
-				base =
-				    para->reg_base[DISP_MOD_DE] +
+#if defined(CONFIG_INDEPENDENT_DE)
+				base = para->reg_base[DISP_MOD_DE + screen_id] +
 				    (screen_id + 1) * 0x00100000
 				    + FCE_OFST + 0x40;
-
+				if (screen_id)
+					base = base - 0x00100000;
+#else
+				base = para->reg_base[DISP_MOD_DE] +
+				    (screen_id + 1) * 0x00100000
+				    + FCE_OFST + 0x40;
+#endif
 				__inf("sel%d, Icsc_base[%d]=0x%p\n", screen_id,
 				      ch_id, (void *)base);
 

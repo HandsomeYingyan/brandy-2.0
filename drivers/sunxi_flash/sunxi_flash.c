@@ -6,6 +6,7 @@
  * wangwei <wangwei@allwinnertech.com>
  *
  */
+
 #include <common.h>
 #include <sunxi_flash.h>
 #include <malloc.h>
@@ -16,6 +17,7 @@
 #include <blk.h>
 #include <linux/libfdt.h>
 #include "flash_interface.h"
+#include "sprite_download.h"
 
 
 __attribute__((section(".data"))) static sunxi_flash_desc *current_flash;
@@ -23,6 +25,7 @@ __attribute__((section(".data"))) static sunxi_flash_desc *current_flash;
 __attribute__((section(".data"))) static sunxi_flash_desc *sprite_flash;
 
 static int sunxi_flash_init_blk(void);
+
 
 int sunxi_flash_read(uint start_block, uint nblock, void *buffer)
 {
@@ -71,9 +74,36 @@ int sunxi_secstorage_read(int item, unsigned char *buf, unsigned int len)
 
 int sunxi_secstorage_write(int item, unsigned char *buf, unsigned int len)
 {
-	return current_flash->secstorage_write(item, buf, len);
+	if (current_flash->secstorage_fast_write)
+		return current_flash->secstorage_fast_write(item, buf, len);
+	else
+		return current_flash->secstorage_write(item, buf, len);
 }
 
+int sunxi_secstorage_flush(void)
+{
+	if (current_flash->secstorage_flush)
+		return current_flash->secstorage_flush();
+	return 0;
+}
+
+int sunxi_flash_is_support_fast_write(int flash_type)
+{
+	int ret = false;
+
+	switch (flash_type) {
+#ifdef CONFIG_SUNXI_NAND
+	case STORAGE_NAND:
+		if (sunxi_nand_desc.secstorage_fast_write)
+			ret = true;
+		break;
+#endif
+	default:
+		break;
+	}
+
+	return ret;
+}
 int sunxi_flash_download_spl(unsigned char *buf, int len, unsigned int ext)
 {
 	return current_flash->download_spl(buf, len, ext);
@@ -148,6 +178,11 @@ int sunxi_sprite_phywrite(uint start_block, uint nblock, void *buffer)
 	return sprite_flash->phywrite(start_block, nblock, buffer);
 }
 
+int sunxi_sprite_phyerase(unsigned int start_block, unsigned int nblock, void *skip)
+{
+	return sprite_flash->phyerase(start_block, nblock, skip);
+}
+
 uint sunxi_sprite_size(void)
 {
 	return sprite_flash->size();
@@ -203,6 +238,19 @@ int sunxi_sprite_erase_area(uint start_block, uint nblock)
 
 	return ret;
 }
+/* sunxi_flash_hook_init apply to boot for burn key*/
+int sunxi_flash_hook_init(void)
+{
+#ifdef CONFIG_SUNXI_NAND
+	int storage_type = get_boot_storage_type();
+
+	if (storage_type == STORAGE_NAND)
+		current_flash = &sunxi_nand_desc;
+
+	return 0;
+#endif
+	return -1;
+}
 
 int sunxi_flash_boot_init(int storage_type, int workmode)
 {
@@ -215,19 +263,28 @@ int sunxi_flash_boot_init(int storage_type, int workmode)
 		int boot_mode = workmode == WORK_MODE_SPRITE_RECOVERY ? 0 : 1;
 		current_flash = &sunxi_nand_desc;
 		state	 = current_flash->init(boot_mode, 0);
+#ifdef CONFIG_SUNXI_UBIFS
+		if (nand_use_ubi()) {
+			ubi_nand_probe_uboot();
+			ubi_nand_attach_mtd();
+		}
+#endif
 	} break;
 #endif
 
 #ifdef CONFIG_SUNXI_SDMMC
 	case STORAGE_SD:
 	case STORAGE_EMMC:
+	case STORAGE_EMMC0:
 	case STORAGE_EMMC3: {
-		int card_no;
 		//sdmmc handle init
+		int card_no = 0;
 		if (storage_type == STORAGE_SD)
 			card_no = 0;
 		else if (storage_type == STORAGE_EMMC)
 			card_no = 2;
+		else if (storage_type == STORAGE_EMMC0)
+			card_no = 0;
 		else
 			card_no = 3;
 		if (workmode == WORK_MODE_CARD_PRODUCT)
@@ -253,8 +310,13 @@ int sunxi_flash_boot_init(int storage_type, int workmode)
 	if (state != 0) {
 		return -1;
 	}
+
 	sprite_flash = current_flash;
 	tick_printf("sunxi flash init ok\n");
+
+	if (current_flash->update_backup_boot0) {
+		current_flash->update_backup_boot0();
+	}
 	return 0;
 }
 
@@ -263,36 +325,37 @@ int sunxi_flash_probe(void)
 	int state = 0;
 
 //try emmc, nand, spi-nor
+	do {
 #ifdef CONFIG_SUNXI_SDMMC
-	current_flash = &sunxi_sdmmcs_desc;
-	state	 = current_flash->probe();
-	if (state == 0)
-		goto __try_end;
-	printf("try emmc fail\n");
+		current_flash = &sunxi_sdmmcs_desc;
+		state	 = current_flash->probe();
+		if (state == 0)
+			break;
+		printf("try emmc fail\n");
 #endif
 
 #ifdef CONFIG_SUNXI_NAND
-	current_flash = &sunxi_nand_desc;
-	state	 = current_flash->probe();
-	if (state == 0)
-		goto __try_end;
-	printf("try nand fail\n");
+		current_flash = &sunxi_nand_desc;
+		state	 = current_flash->probe();
+		if (state == 0)
+			break;
+		printf("try nand fail\n");
 #endif
 
 #ifdef CONFIG_SUNXI_SPINOR
-	current_flash = &sunxi_spinor_desc;
-	state	 = current_flash->probe();
-	if (state == 0)
-		goto __try_end;
+		current_flash = &sunxi_spinor_desc;
+		state	 = current_flash->probe();
+		if (state == 0)
+			break;
 
-	printf("try spinor fail\n");
+		printf("try spinor fail\n");
 #endif
 
-	if (state != 0) {
-		return -1;
-	}
+		if (state != 0) {
+			return -1;
+		}
 
-__try_end:
+	} while(0);
 	sprite_flash = current_flash;
 #ifdef CONFIG_SUNXI_SDMMC
 	if (get_boot_work_mode() == WORK_MODE_CARD_PRODUCT) {
@@ -301,6 +364,7 @@ __try_end:
 			return -1;
 	}
 #endif
+
 	return 0;
 }
 
@@ -330,6 +394,104 @@ int sunxi_flash_init_ext(void)
 }
 
 
+int sunxi_flash_upload_boot0(char *buffer, int size)
+{
+	int storage_type = 0;
+	int ret = 0;
+	storage_type = get_boot_storage_type();
+	switch (storage_type) {
+#ifdef CONFIG_SUNXI_NAND
+	case STORAGE_NAND:
+		ret = nand_read_boot0(buffer, size);
+		break;
+#endif
+#ifdef CONFIG_SUNXI_SDMMC
+	case STORAGE_EMMC:
+	case STORAGE_EMMC3:
+		ret = card_read_boot0(buffer, size);
+		break;
+#endif
+	default:
+		pr_debug("%s:not support storage type %d\n", __func__, storage_type);
+		ret = -1;
+		break;
+}
+
+return ret;
+}
+
+int sunxi_flash_get_boot0_size(void)
+{
+	/* note:page align for nand */
+	char *boot_buffer = NULL;
+	int size;
+	int ret = 0;
+
+	boot_buffer = memalign(CONFIG_SYS_CACHELINE_SIZE, 32 * 1024);
+	if (boot_buffer == NULL) {
+		pr_err("%s:alloc memory fail\n", __func__);
+		return -1;
+	}
+	/* read boot head */
+	ret = sunxi_flash_upload_boot0(boot_buffer, 32 * 1024);
+	if (ret) {
+		pr_debug("%s: get boot0 head fail\n", __func__);
+		free(boot_buffer);
+		return -1;
+	}
+	/* get boot size */
+	if (SUNXI_NORMAL_MODE == sunxi_get_securemode()) {
+		boot0_file_head_t    *boot0  = (boot0_file_head_t *)boot_buffer;
+		size = boot0->boot_head.length;
+	} else {
+		toc0_private_head_t  *toc0   = (toc0_private_head_t *)boot_buffer;
+		size = toc0->length;
+	}
+	free(boot_buffer);
+	return size;
+}
+
+int sunxi_flash_update_boot0(void)
+{
+	int storage_type = 0;
+	char *boot_buffer = NULL;
+	int ret = 0;
+	int size = 0;
+
+	storage_type = get_boot_storage_type();
+
+	size = sunxi_flash_get_boot0_size();
+	if (size <= 0) {
+		pr_debug("%s: get boot size error\n", __func__);
+		return -1;
+	}
+	pr_msg("boot0 size:%d\n", size);
+	boot_buffer = memalign(CONFIG_SYS_CACHELINE_SIZE, size);
+	if (!boot_buffer) {
+		pr_err("%s:alloc memory fail\n", __func__);
+		return -1;
+	}
+	/* read total boot data */
+	ret = sunxi_flash_upload_boot0(boot_buffer, size);
+	if (ret) {
+		pr_debug("%s:upload boot0 fail\n", __func__);
+		goto _UPDATE_ERROR_;
+	}
+	ret = sunxi_sprite_download_boot0(boot_buffer, storage_type);
+	if (ret) {
+		pr_debug("%s:update boot0 for ota fail\n", __func__);
+	}
+	free(boot_buffer);
+	/* sunxi_flash_flush(); */
+
+	return ret;
+_UPDATE_ERROR_:
+	if (boot_buffer)
+		free(boot_buffer);
+	return -1;
+}
+
+
 #ifdef CONFIG_SUNXI_FDT_SAVE
 int read_boot_package(int storage_type, void *package_buf)
 {
@@ -340,6 +502,7 @@ int read_boot_package(int storage_type, void *package_buf)
 	sbrom_toc1_head_info_t *toc1_head = NULL;
 
 	debug("boot package size: 0x%x\n", read_len);
+	extern  int nand_read_uboot_data(unsigned char *buf, unsigned int len);
 	switch (storage_type) {
 #ifdef CONFIG_SUNXI_NAND
 	case STORAGE_NAND:
@@ -348,6 +511,7 @@ int read_boot_package(int storage_type, void *package_buf)
 #endif
 #ifdef CONFIG_SUNXI_SDMMC
 	case STORAGE_EMMC:
+	case STORAGE_EMMC0:
 	case STORAGE_SD:
 	case STORAGE_EMMC3:
 		ret = sunxi_flash_phyread(UBOOT_START_SECTOR_IN_SDMMC, read_len/512, package_buf);
@@ -398,7 +562,7 @@ int save_fdt_to_flash(void *fdt_buf, size_t fdt_size)
 		/*10M buffer*/
 		package_buf_size = 10 << 20;
 	}
-	package_buf = (char *)memalign(CONFIG_SUNXI_DTB_ALIGN_SIZE, package_buf_size);
+	package_buf = (char *)memalign(CONFIG_SYS_CACHELINE_SIZE, package_buf_size);
 	if (package_buf == NULL)
 		return -1;
 
@@ -454,7 +618,9 @@ static unsigned long sunxi_block_read(struct blk_desc *block_dev,
 {
 	int storage_type = get_boot_storage_type();
 	/* debug("addr = %d, len = %d\n", (uint)start, (uint)blkcnt); */
-	if ((storage_type == STORAGE_SD) || (storage_type == STORAGE_EMMC))
+	if (get_boot_work_mode() == WORK_MODE_CARD_PRODUCT ||
+		(storage_type == STORAGE_SD) || (storage_type == STORAGE_EMMC)
+			|| (storage_type == STORAGE_EMMC0))
 		return sunxi_flash_phyread((uint)start, (uint)blkcnt, (void *)buffer);
 	else
 		return sunxi_flash_read((uint)start, (uint)blkcnt, (void *)buffer);
@@ -466,7 +632,9 @@ static unsigned long sunxi_block_write(struct blk_desc *block_dev,
 {
 	int storage_type = get_boot_storage_type();
 	/* debug("addr = %d, len = %d\n", (uint)start, (uint)blkcnt); */
-	if ((storage_type == STORAGE_SD) || (storage_type == STORAGE_EMMC))
+	if (get_boot_work_mode() == WORK_MODE_CARD_PRODUCT ||
+		(storage_type == STORAGE_SD) || (storage_type == STORAGE_EMMC)
+			|| (storage_type == STORAGE_EMMC0))
 		return sunxi_flash_phywrite((uint)start, (uint)blkcnt, (void *)buffer);
 	else
 		return sunxi_flash_write((uint)start, (uint)blkcnt, (void *)buffer);

@@ -56,17 +56,24 @@ uint pwm_pin_count[4] = {0};
 #define SET_BITS(shift, width, reg, val) \
 	    (((reg) & CLRMASK(width, shift)) | (val << (shift)))
 
-#if ((defined CONFIG_ARCH_SUN8IW12P1) ||\
-		(defined CONFIG_ARCH_SUN8IW17P1) ||\
-		(defined CONFIG_ARCH_SUN50IW6P1) ||\
-		(defined CONFIG_ARCH_SUN50IW3P1) ||\
+#if ((defined CONFIG_MACH_SUN8IW12) ||\
+		(defined CONFIG_MACH_SUN8IW17) ||\
+		(defined CONFIG_MACH_SUN50IW6) ||\
+		(defined CONFIG_MACH_SUN50IW3) ||\
 		(defined CONFIG_MACH_SUN8IW18) ||\
-		(defined CONFIG_ARCH_SUN8IW16P1) ||\
-		(defined CONFIG_ARCH_SUN8IW19P1))
+		(defined CONFIG_MACH_SUN8IW16) ||\
+		(defined CONFIG_MACH_SUN8IW19) ||\
+		(defined CONFIG_MACH_SUN50IW9))
 #define CLK_GATE_SUPPORT
 uint clk_count;
 uint sclk_count;
 #endif
+
+struct sunxi_pwm_config {
+	//unsigned int dead_time;
+	//unsigned int bind_pwm;
+	unsigned int clk_bypass_output;
+};
 
 struct sunxi_pwm_chip {
 	struct list_head	list;
@@ -74,6 +81,7 @@ struct sunxi_pwm_chip {
 	unsigned int            base;
 	int                     pwm;
 	int			pwm_base;
+	struct sunxi_pwm_config *config;
 };
 
 static LIST_HEAD(pwm_list);
@@ -112,13 +120,13 @@ static int sunxi_pwm_pin_set_state(char *dev_name, char *name)
 	else
 		state = 0;
 
-	len = sprintf(compat, "%s", dev_name);
+	len = sprintf(compat, "/soc/%s", dev_name);
 	if (len > 32)
-		printf("disp_sys_set_state, size of mian_name is out of range\n");
+		pr_msg("disp_sys_set_state, size of mian_name is out of range\n");
 
 	ret = fdt_set_all_pin(compat, (state == 1) ? "pinctrl-0" : "pinctrl-1");
 	if (ret != 0)
-		printf("%s, fdt_set_all_pin, ret=%d\n", __func__, ret);
+		pr_msg("%s, fdt_set_all_pin, ret=%d\n", __func__, ret);
 
 	return ret;
 }
@@ -167,7 +175,7 @@ static u32 get_pccr_reg_offset(u32 sel, u32 *reg_offset)
 		*reg_offset = PWM_PCCR8;
 		break;
 	default:
-		printf("%s:Not supported!\n", __func__);
+		pr_error("%s:Not supported!\n", __func__);
 		break;
 	}
 	return 0;
@@ -224,6 +232,13 @@ int sunxi_pwm_config(struct sunxi_pwm_chip *pchip, int duty_ns, int period_ns)
 	} else if (period_ns > 10 && period_ns <= 334) {
 		/* if freq between 3M~100M, then select 100M as clock */
 		c = 100000000;
+		/*set clk bypass_output reg to 1 when pwm is used as the internal clock source.*/
+		if (pchip->config->clk_bypass_output == 1) {
+			temp = sunxi_pwm_readl(pchip, reg_offset);
+			temp = SET_BITS(reg_bypass_shift, 1, temp, 1);
+			sunxi_pwm_writel(pchip, reg_offset, temp);
+		}
+
 		/*clk_src_reg*/
 
 		temp = sunxi_pwm_readl(pchip, reg_offset);
@@ -232,6 +247,12 @@ int sunxi_pwm_config(struct sunxi_pwm_chip *pchip, int duty_ns, int period_ns)
 	} else if (period_ns > 334) {
 		/* if freq < 3M, then select 24M clock */
 		c = 24000000;
+		/*set clk bypass_output reg to 1 when pwm is used as the internal clock source.*/
+		if (pchip->config->clk_bypass_output == 1) {
+			temp = sunxi_pwm_readl(pchip, reg_offset);
+			temp = SET_BITS(reg_bypass_shift, 1, temp, 1);
+			sunxi_pwm_writel(pchip, reg_offset, temp);
+		}
 		/*clk_src_reg*/
 
 		temp = sunxi_pwm_readl(pchip, reg_offset);
@@ -475,7 +496,7 @@ int pwm_request(int pwm, const char *label)
 
 	list_for_each_entry(pchip, &pwm_list, list) {
 		if (pchip->pwm == pwm) {
-			printf("%s: err:this pwm has been requested!\n", __func__);
+			pr_error("%s: err:this pwm has been requested!\n", __func__);
 			return -1;
 		}
 	}
@@ -484,20 +505,20 @@ int pwm_request(int pwm, const char *label)
 	sprintf(sub_name, "pwm-base");
 	node = fdt_path_offset(working_fdt, main_name);
 	if (node < 0) {
-		printf("error:fdt err returned %s\n", fdt_strerror(node));
+		pr_error("fdt err %s\n", fdt_strerror(node));
 		return -1;
 	}
 
 	ret = fdt_getprop_u32(working_fdt, node, sub_name, (uint32_t *)&pwm_base);
 	if (ret < 0) {
-		printf("fdt_getprop_u32 %s.%s fail\n", main_name, sub_name);
+		pr_error("get fdt %s.%s fail\n", main_name, sub_name);
 		return -1;
 	}
 
 	sprintf(sub_name, "pwm-number");
 	ret = fdt_getprop_u32(working_fdt, node, sub_name, (uint32_t *)&pwm_number);
 	if (ret < 0) {
-		printf("fdt_getprop_u32 %s.%s fail\n", main_name, sub_name);
+		pr_error("get fdt %s.%s fail\n", main_name, sub_name);
 		return -1;
 	}
 #if defined(CLK_GATE_SUPPORT)
@@ -513,10 +534,13 @@ int pwm_request(int pwm, const char *label)
 		/* get handle in pwm. */
 		handle_num = fdt_getprop_u32(working_fdt, node, "pwms", handle);
 		if (handle_num < 0) {
-			printf("%s:%d:error:get property handle %s error:%s\n",
-			       __func__, __LINE__, "clocks",
+			handle_num = fdt_getprop_u32(working_fdt, node, "sunxi-pwms", handle);
+			if (handle_num < 0) {
+				pr_error("%s:%d:error:get property handle %s error:%s\n",
+					__func__, __LINE__, "clocks",
 					fdt_strerror(handle_num));
-			return -1;
+				return -1;
+			}
 		}
 	} else {
 		/* pwm is included is not  in pwm area,then find spwm area.*/
@@ -526,17 +550,17 @@ int pwm_request(int pwm, const char *label)
 		node = fdt_path_offset(working_fdt, main_name);
 		ret = fdt_getprop_u32(working_fdt, node, sub_name, (uint32_t *)&pwm_base);
 		if (ret < 0) {
-			printf("fdt_getprop_u32 %s.%s fail\n", main_name, sub_name);
+			pr_error("get fdt %s.%s fail\n", main_name, sub_name);
 			return -1;
 		}
 
 		sprintf(sub_name, "pwm-number");
 		ret = fdt_getprop_u32(working_fdt, node, sub_name, (uint32_t *)&pwm_number);
 		if (ret < 0) {
-			printf("fdt_getprop_u32 %s.%s fail\n", main_name, sub_name);
+			pr_error("get fdt %s.%s fail\n", main_name, sub_name);
 			return -1;
 		} else
-			printf("%s:pwm number = %d\n", __func__, pwm_number);
+			pr_msg("%s:pwm number = %d\n", __func__, pwm_number);
 
 #if defined(CLK_GATE_SUPPORT)
 		sclk_count++;
@@ -550,13 +574,16 @@ int pwm_request(int pwm, const char *label)
 			/* get handle in pwm. */
 			handle_num = fdt_getprop_u32(working_fdt, node, "pwms", handle);
 			if (handle_num < 0) {
-				printf("%s:%d:error:get property handle %s error:%s\n",
-				       __func__, __LINE__, "clocks",
+				handle_num = fdt_getprop_u32(working_fdt, node, "sunxi-pwms", handle);
+				if (handle_num < 0) {
+					pr_error("%s:%d:error:get property handle %s error:%s\n",
+						__func__, __LINE__, "clocks",
 						fdt_strerror(handle_num));
-				return -1;
+					return -1;
+				}
 			}
 		} else {
-			printf("the pwm id is wrong,none pwm in dts.\n");
+			pr_error("the pwm id is wrong,none pwm in dts.\n");
 			return -1;
 		}
 	}
@@ -565,7 +592,7 @@ int pwm_request(int pwm, const char *label)
 
 	pchip = malloc(sizeof(*pchip));
 	if (!pchip) {
-		printf("%s: error:pwm chip malloc failed!\n", __func__);
+		pr_error("%s:malloc failed!\n", __func__);
 		return -1;
 	} else {
 		memset(pchip, 0, sizeof(*pchip));
@@ -575,7 +602,7 @@ int pwm_request(int pwm, const char *label)
 
 	sub_node = fdt_node_offset_by_phandle(working_fdt, handle[pwm - pwm_base]);
 	if (sub_node < 0) {
-		printf("%s:%d: error:get property by handle error\n", __func__, __LINE__);
+		pr_error("%s:%d: error:get property by handle error\n", __func__, __LINE__);
 		goto err_pwm;
 	}
 
@@ -584,14 +611,24 @@ int pwm_request(int pwm, const char *label)
 
 	ret = fdt_getprop_u32(working_fdt, sub_node, "reg_base", &pchip->base);
 	if (ret < 0) {
-		printf("%s: err: get reg-base err.\n", __func__);
+		pr_error("%s: err: get reg-base err.\n", __func__);
 		goto err_pwm;
 	} else
-		printf("%s: reg = 0x%x. pwm = %d.\n", __func__, pchip->base, pchip->pwm);
+		pr_msg("%s: reg = 0x%x. pwm = %d.\n", __func__, pchip->base, pchip->pwm);
+
+	pchip->config = malloc(sizeof(*pchip->config));
+	if (!pchip->config) {
+		pr_error("%s: err: pwm[%d] config malloc failed !\n", __func__, pwm);
+		goto err_pwm;
+	}
+	ret = fdt_getprop_u32(working_fdt, sub_node, "clk_bypass_output",
+			&pchip->config->clk_bypass_output);
+	if (ret >= 0)
+		pr_msg("use pwm[%d] as internal clock!\n", pwm);
 
 	list_add_tail(&pchip->list, &pwm_list);
 
-	printf("request pwm success, pwm = %d.\n", pwm);
+	pr_msg("request pwm success, pwm = %d.\n", pwm);
 
 	return pwm;
 
@@ -614,6 +651,7 @@ int pwm_remove(int pwm)
 				clk_count--;
 		}
 	}
+	free(pchip->config);
 	if (clk_count == 0) {
 		writel(0, (SUNXI_CCM_BASE + PWM_CCU_OFFSET));
 	}

@@ -27,13 +27,14 @@
 #include "rawnand_chip.h"
 #include "../version.h"
 #include "../../nand_osal_uboot.h"
+#include <asm/io.h>
 
 
 extern int nand_open_count;
+void *g_nreg_base;
 
 struct _nand_temp_buf ntf = {0};
 struct _nand_permanent_data nand_permanent_data = {
-
     MAGIC_DATA_FOR_PERMANENT_DATA,
     0,
 };
@@ -327,6 +328,26 @@ __u32 rawnand_get_twoplane_flag(void)
 	return g_nssi->nsci->two_plane;
 }
 
+unsigned int rawnand_get_support_v_interleave_flag(struct nand_super_chip_info *schip)
+{
+	if (!g_nssi) {
+		RAWNAND_INFO("rawnand hw not init\n");
+		return 0;
+	}
+
+	return g_nssi->support_v_interleave;
+}
+
+unsigned int rawnand_get_support_dual_channel(void)
+{
+	if (!g_nssi) {
+		RAWNAND_INFO("rawnand hw not init\n");
+		return 0;
+	}
+
+	return g_nssi->support_dual_channel;
+}
+
 int nand_read_scan_data(unsigned int chip, unsigned int block, unsigned int page, unsigned int bitmap, unsigned char *mbuf, unsigned char *sbuf)
 {
 	return nand_physic_read_page(chip, block, page, bitmap, mbuf, sbuf);
@@ -357,7 +378,28 @@ int rawnand_physic_erase_block(unsigned int chip, unsigned int block)
 
 	return ret;
 }
+/**
+ * rawnand read boot0 page: read boot0 page ndfc cfg special
+ */
+int rawnand_physic_read_boot0_page(unsigned int chip, unsigned int block, unsigned int page, unsigned int bitmap, unsigned char *mbuf, unsigned char *sbuf)
+{
+	int ret = 0;
+	struct nand_chip_info *nci;
+	struct _nand_physic_op_par npo;
 
+	nci = nci_get_from_nsi(g_nsi, chip);
+
+	npo.chip = chip;
+	npo.block = block;
+	npo.page = page;
+	npo.mdata = mbuf;
+	npo.sdata = sbuf;
+	npo.slen = 64;
+
+	ret = nci->nand_read_boot0_page(nci, &npo);
+
+	return ret;
+}
 /*
  *Name         :
  *Description  :
@@ -365,6 +407,7 @@ int rawnand_physic_erase_block(unsigned int chip, unsigned int block)
  *Return       : 0:ok  -1:fail
  *Note         :
  */
+
 int rawnand_physic_read_page(unsigned int chip, unsigned int block, unsigned int page, unsigned int bitmap, unsigned char *mbuf, unsigned char *sbuf)
 {
 	int ret = 0;
@@ -380,7 +423,10 @@ int rawnand_physic_read_page(unsigned int chip, unsigned int block, unsigned int
 	npo.sect_bitmap = bitmap;
 	npo.mdata = mbuf;
 	npo.sdata = sbuf;
-	npo.slen = nci->sdata_bytes_per_page;
+	if (npo.sdata)
+		npo.slen = nci->sdata_bytes_per_page;
+	else
+		npo.slen = 0;
 
 	ret = nci->nand_physic_read_page(&npo);
 
@@ -712,7 +758,7 @@ int nand_read_data_in_whole_block(unsigned int chip, unsigned int block, unsigne
  *Return       : 0:ok  -1:fail
  *Note         :
  */
-int rawnand_physic_block_copy(unsigned int chip_s, unsigned int block_s, unsigned int chip_d, unsigned int block_d)
+int rawnand_physic_block_copy(unsigned int chip_s, unsigned int block_s, unsigned int chip_d, unsigned int block_d, unsigned int copy_nums)
 {
 	int i, ret = 0;
 	unsigned char spare[64];
@@ -720,7 +766,7 @@ int rawnand_physic_block_copy(unsigned int chip_s, unsigned int block_s, unsigne
 
 	buf = (unsigned char *)nand_get_temp_buf(g_nsi->nci->sector_cnt_per_page << 9);
 
-	for (i = 0; i < g_nsi->nci->page_cnt_per_blk; i++) {
+	for (i = 0; i < copy_nums; i++) {
 		ret |= nand_physic_read_page(chip_s, block_s, i, g_nsi->nci->sector_cnt_per_page, buf, spare);
 		ret |= nand_physic_write_page(chip_d, block_d, i, g_nsi->nci->sector_cnt_per_page, buf, spare);
 	}
@@ -1277,6 +1323,61 @@ void init_list_head(void **head)
 	}
 }
 
+static void rawnand_dump_clock(void)
+{
+	RAWNAND_INFO("---%s start---\n", __func__);
+
+#if defined(CONFIG_MACH_SUN50IW11)
+	RAWNAND_INFO("SUNXI_CCM_BASE: 0x%08x\n", SUNXI_CCM_BASE);
+	RAWNAND_INFO("nand0 clk: %x\n", readl(SUNXI_CCM_BASE + 0x810));
+	RAWNAND_INFO("nand1 clk: %x\n", readl(SUNXI_CCM_BASE + 0x814));
+	RAWNAND_INFO("nand bus gating reset: %x\n", readl(SUNXI_CCM_BASE + 0x82c));
+	RAWNAND_INFO("mbus cfg: %x\n", readl(SUNXI_CCM_BASE + 0x540));
+	RAWNAND_INFO("mbus master clk gating: %x\n", readl(SUNXI_CCM_BASE + 0x804));
+	RAWNAND_INFO("SUNXI_PRCM_BASE: 0x%08x\n", SUNXI_PRCM_BASE);
+	RAWNAND_INFO("pll_peri ctrl: %x\n", readl(SUNXI_PRCM_BASE + 0x1010));
+#elif defined(CONFIG_MACH_SUN50IW10) || defined(CONFIG_MACH_SUN50IW9)
+	RAWNAND_INFO("SUNXI_CCM_BASE: 0x%08x\n", SUNXI_CCM_BASE);
+	RAWNAND_INFO("nand0 clk: %x\n", readl(SUNXI_CCM_BASE + 0x810));
+	RAWNAND_INFO("nand1 clk: %x\n", readl(SUNXI_CCM_BASE + 0x814));
+	RAWNAND_INFO("nand bus gating reset: %x\n", readl(SUNXI_CCM_BASE + 0x82c));
+	RAWNAND_INFO("mbus cfg: %x\n", readl(SUNXI_CCM_BASE + 0x540));
+	RAWNAND_INFO("mbus master clk gating: %x\n", readl(SUNXI_CCM_BASE + 0x804));
+	RAWNAND_INFO("pll_peri0 ctrl: %x\n", readl(SUNXI_CCM_BASE + 0x20));
+	RAWNAND_INFO("pll_peri1 ctrl: %x\n", readl(SUNXI_CCM_BASE + 0x28));
+#endif
+	RAWNAND_INFO("---%s end---\n", __func__);
+}
+
+static void rawnand_dump_gpio_nand(void)
+{
+	RAWNAND_INFO("---%s start---\n", __func__);
+#if defined(CONFIG_MACH_SUN50IW11)
+	RAWNAND_INFO("SUNXI_PIO_BASE: 0x%08x\n", SUNXI_PIO_BASE);
+	RAWNAND_INFO("pc cfg0: %x\n", readl(SUNXI_PIO_BASE + 0x48));
+	RAWNAND_INFO("pc data: %x\n", readl(SUNXI_PIO_BASE + 0x58));
+	RAWNAND_INFO("pc drv_lvl: %x\n", readl(SUNXI_PIO_BASE + 0x5c));
+	RAWNAND_INFO("pc pull: %x\n", readl(SUNXI_PIO_BASE + 0x64));
+
+	RAWNAND_INFO("pf cfg0: %x\n", readl(SUNXI_PIO_BASE + 0xb4));
+	RAWNAND_INFO("pf data: %x\n", readl(SUNXI_PIO_BASE + 0xc4));
+	RAWNAND_INFO("pf drv_lvl: %x\n", readl(SUNXI_PIO_BASE + 0xc8));
+	RAWNAND_INFO("pf pull: %x\n", readl(SUNXI_PIO_BASE + 0xd0));
+	RAWNAND_INFO("voltage mode select: %x\n", readl(SUNXI_PIO_BASE + 0x340));
+#elif defined(CONFIG_MACH_SUN50IW10) || defined(CONFIG_MACH_SUN50IW9)
+	RAWNAND_INFO("SUNXI_PIO_BASE: 0x%08x\n", SUNXI_PIO_BASE);
+	RAWNAND_INFO("pc cfg0: %x\n", readl(SUNXI_PIO_BASE + 0x48));
+	RAWNAND_INFO("pc cfg1: %x\n", readl(SUNXI_PIO_BASE + 0x4c));
+	RAWNAND_INFO("pc cfg2 %x\n", readl(SUNXI_PIO_BASE + 0x50));
+	RAWNAND_INFO("pc data: %x\n", readl(SUNXI_PIO_BASE + 0x58));
+	RAWNAND_INFO("pc drv0_lvl: %x\n", readl(SUNXI_PIO_BASE + 0x5c));
+	RAWNAND_INFO("pc drv1_lvl: %x\n", readl(SUNXI_PIO_BASE + 0x60));
+	RAWNAND_INFO("pc pull_0: %x\n", readl(SUNXI_PIO_BASE + 0x64));
+	RAWNAND_INFO("pc pull_1: %x\n", readl(SUNXI_PIO_BASE + 0x68));
+	RAWNAND_INFO("voltage mode select: %x\n", readl(SUNXI_PIO_BASE + 0x340));
+#endif
+	RAWNAND_INFO("---%s end---\n", __func__);
+}
 /**
  * rawnand_channel_init: init channel
  * @channel : channel num
@@ -1295,7 +1396,7 @@ static int rawnand_channel_init(int channel)
 			RAWNAND_ERR("rawnand err: %s g_nsi is null\n", __func__);
 			return ERR_NO_12;
 		}
-		memset(g_nsi, 0, sizeof(struct _nand_super_storage_info));
+		memset(g_nsi, 0, sizeof(struct _nand_storage_info));
 
 
 	}
@@ -1310,6 +1411,7 @@ static int rawnand_channel_init(int channel)
 	add_to_nctri(nctri);
 	/*fill the channel's nctri with its register address*/
 	nctri->nreg_base = nand_get_channel_base_addr(channel);
+	g_nreg_base = nctri->nreg_base;
 	fill_nctri(nctri);
 
 
@@ -1393,6 +1495,11 @@ int rawnand_hw_init(void)
 	/*request nand temp buffer*/
 	nand_init_temp_buf(&ntf);
 
+	/*PC withstand volatage mode switch to 3.3v,consister other module
+	 * switch it to 1.8v, if nand need 1.8v, configure id table ddr_opt
+	 * bit16(NAND_VCCQ_1P8V), then update the withstand volatage mode*/
+	nand_enable_vccq_3p3v();
+
 	/*init channel*/
 	for (cn = 0; cn < MAX_CHANNEL; cn++) {
 
@@ -1453,7 +1560,54 @@ err0:
 	delete_nctri();
 	return NAND_OP_FALSE ;
 }
+void rawnand_set_nand_info_data(struct _nand_info *nand_info)
+{
+	nand_info->type = 0;
+	nand_info->SectorNumsPerPage = g_nssi->nsci->sector_cnt_per_super_page;
+	nand_info->BytesUserData = g_nssi->nsci->spare_bytes;
+	nand_info->BlkPerChip = g_nssi->nsci->blk_cnt_per_super_chip;
 
+	nand_info->ChipNum = g_nssi->super_chip_cnt;
+
+	nand_info->PageNumsPerBlk = g_nssi->nsci->page_cnt_per_super_blk;
+
+	nand_info->MaxBlkEraseTimes = g_nssi->nsci->nci_first->max_erase_times;
+
+	nand_info->EnableReadReclaim = 1;
+
+	nand_info->FullBitmap = g_nssi->nsci->sector_cnt_per_super_page;
+
+	nand_info->boot = phyinfo_buf;
+
+	/*aw_nand_info.MaxBlkEraseTimes = 2000;*/
+	/*aw_nand_info.EnableReadReclaim = (g_nsi->nci->npi->operation_opt & NAND_READ_RECLAIM) ? 1 : 0;*/
+
+	if (aw_nand_info.boot->physic_block_reserved == 0)
+		aw_nand_info.boot->physic_block_reserved = PHYSIC_RECV_BLOCK;
+
+	/*set aw_nand_info.boot->uboot_start_block
+	 *    aw_nand_info.boot->uboot_next_block*/
+	set_uboot_start_and_end_block();
+}
+#if defined(CONFIG_SUNXI_NAND_ERASE_ALL_BLOCK)
+void rawnand_erase_all_block(struct _nand_info *nand_info)
+{
+	int ret;
+	int blk_num = 0, chip_num = 0;
+	static int nand_erase_num;
+	RAWNAND_INFO("chip have %d chips %d blocks\n", nand_info->ChipNum,
+			nand_info->BlkPerChip*2);
+	for (chip_num = 0; chip_num < nand_info->ChipNum && NAND_IS_Burn_Mode() && !nand_erase_num; chip_num++) {
+		for (blk_num = 0; blk_num < nand_info->BlkPerChip*2; blk_num++) {
+			ret = rawnand_physic_erase_block(chip_num, blk_num);
+			if (ret != 0)
+				RAWNAND_ERR("rawnand erase block@%d fail\n", blk_num);
+		}
+	}
+	nand_erase_num++;
+	RAWNAND_ERR("rawnand erase block@%d end\n", blk_num);
+}
+#endif
 /*****************************************************************************
  *Name         :
  *Description  :
@@ -1472,32 +1626,17 @@ struct _nand_info *RawNandHwInit(void)
 
 	nand_cfg_setting();
 
+
 	/*ret = nand_physic_init();*/
 	ret = rawnand_hw_init();
 	if (ret != 0) {
+		rawnand_dump_clock();
+		rawnand_dump_gpio_nand();
 		RAWNAND_ERR("nand_physic_init error %d\n", ret);
 		return NULL;
 	}
 
-	aw_nand_info.type = 0;
-	aw_nand_info.SectorNumsPerPage = g_nssi->nsci->sector_cnt_per_super_page;
-	aw_nand_info.BytesUserData = g_nssi->nsci->spare_bytes;
-	aw_nand_info.BlkPerChip = g_nssi->nsci->blk_cnt_per_super_chip;
-
-	aw_nand_info.ChipNum = g_nssi->super_chip_cnt;
-
-	aw_nand_info.PageNumsPerBlk = g_nssi->nsci->page_cnt_per_super_blk;
-	//aw_nand_info.FullBitmap = FULL_BITMAP_OF_SUPER_PAGE;
-
-	//aw_nand_info.MaxBlkEraseTimes = 2000;
-	aw_nand_info.MaxBlkEraseTimes = g_nssi->nsci->nci_first->max_erase_times;
-
-	//aw_nand_info.EnableReadReclaim = (g_nsi->nci->npi->operation_opt & NAND_READ_RECLAIM) ? 1 : 0;
-	aw_nand_info.EnableReadReclaim = 1;
-
-	aw_nand_info.boot = phyinfo_buf;
-
-	set_uboot_start_and_end_block();
+	rawnand_set_nand_info_data(&aw_nand_info);
 
 	set_hynix_special_info();
 
@@ -1505,8 +1644,15 @@ struct _nand_info *RawNandHwInit(void)
 
 	nand_open_count++;
 
+#if defined(CONFIG_SUNXI_SLCNAND_OFFLINE_BURN_SECURE_FIRMWARE)
+	rawnand_replace_boot0_with_toc0();
+#endif
+
 	RAWNAND_DBG("RawNandHwInit end\n");
 
+#if defined(CONFIG_SUNXI_NAND_ERASE_ALL_BLOCK)
+	rawnand_erase_all_block(&aw_nand_info);
+#endif
 	return &aw_nand_info;
 }
 

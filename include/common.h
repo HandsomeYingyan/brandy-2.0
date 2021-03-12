@@ -387,10 +387,6 @@ uint	dpram_alloc(uint size);
 uint	dpram_alloc_align(uint size,uint align);
 void	bootcount_store (ulong);
 ulong	bootcount_load (void);
-#ifdef CONFIG_SUNXI_SWITCH_SYSTEM
-int sunxi_auto_switch_system(void);
-int sunxi_damage_switch_system(void);
-#endif
 #define BOOTCOUNT_MAGIC		0xB001C041
 
 /* $(CPU)/.../<eth> */

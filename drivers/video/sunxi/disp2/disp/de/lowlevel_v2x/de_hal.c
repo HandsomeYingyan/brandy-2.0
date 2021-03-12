@@ -18,7 +18,7 @@
 
 static unsigned int g_device_fps[DE_NUM] = { 60 };
 static bool g_de_blank[DE_NUM] = { false };
-static unsigned int g_de_freq;
+static unsigned int g_de_freq = 297;
 
 int de_update_device_fps(unsigned int sel, u32 fps)
 {
@@ -740,11 +740,19 @@ int de_al_init(disp_bsp_init_para *para)
 	int i;
 	int num_screens = de_feat_get_num_screens();
 
+#if defined(CONFIG_INDEPENDENT_DE)
+	for (i = 0; i < num_screens; i++) {
+		de_rtmx_init(i, para->reg_base[DISP_MOD_DE + i]);
+		de_vsu_init(i, para->reg_base[DISP_MOD_DE + i]);
+		de_gsu_init(i, para->reg_base[DISP_MOD_DE + i]);
+	}
+#else
 	for (i = 0; i < num_screens; i++) {
 		de_rtmx_init(i, para->reg_base[DISP_MOD_DE]);
 		de_vsu_init(i, para->reg_base[DISP_MOD_DE]);
 		de_gsu_init(i, para->reg_base[DISP_MOD_DE]);
 	}
+#endif
 
 	return 0;
 }

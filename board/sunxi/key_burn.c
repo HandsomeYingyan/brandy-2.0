@@ -41,6 +41,7 @@ int sunxi_keydata_burn_by_usb(void)
 		return 0;
 	}
 	memset(buffer, 0, 512);
+#ifdef CONFIG_SUNXI_SECURE_STORAGE
 	if (sunxi_secure_storage_init()) {
 		pr_err("sunxi secure storage is not supported\n");
 	} else {
@@ -63,5 +64,6 @@ int sunxi_keydata_burn_by_usb(void)
 		return 0;
 #endif
 	}
+#endif
 	return do_burn_from_boot(NULL, 0, 0, NULL);
 }

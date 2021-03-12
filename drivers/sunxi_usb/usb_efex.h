@@ -49,7 +49,9 @@
 #define AL_VERIFY_DEV_MODE_UPDATE_HOT	0x04
 
 #define	PHOENIX_PRIV_DATA_LEN_NR	8								//2的8次 = 256
+#ifndef PHOENIX_PRIV_DATA_ADDR
 #define PHOENIX_PRIV_DATA_ADDR	    (SUNXI_SYS_SRAM_BASE + 0x7e00)			//给phoenix保留的空间
+#endif
 #define PHOENIX_PRIV_DATA_LEN	    (1 << PHOENIX_PRIV_DATA_LEN_NR)	//空间大小
 
 //--hgl--传输层的命令
@@ -128,6 +130,8 @@ struct sunxi_efex_csw_t
 #define FEX_CMD_fes_reset_cpu					0x0214
 #define FEX_CMD_fes_low_power_manger 			0x0215
 #define FEX_CMD_fes_query_secure                0x0230
+#define FEX_CMD_fes_query_info               0x0231
+
 //各个app命令的cmd,data部分，status部分是共用的
 
 //====================verify_dev====================
@@ -358,11 +362,7 @@ struct multi_unseq_mem_s
 };
 
 #if defined (CONFIG_SUNXI_SPINOR)
-#if defined (CONFIG_SUNXI_FREERTOS)
-#define SUNXI_EFEX_RECV_MEM_SIZE	(4 * 1024 * 1024)
-#else
 #define SUNXI_EFEX_RECV_MEM_SIZE	(2 * 1024 * 1024)
-#endif
 #else
 #define SUNXI_EFEX_RECV_MEM_SIZE	(4 * 1024 * 1024)
 #endif
@@ -407,9 +407,17 @@ efex_trans_set_t;
 #define  SUNXI_EFEX_TRANS_START_TAG		(0x20000)
 #define  SUNXI_EFEX_TRANS_FINISH_TAG	(0x10000)
 
+#define  SUNXI_EFEX_LOG_BUFF_INFO_TAG		(0x8101)
+
 #define  SUNXI_EFEX_VERIFY_STATUS		(0)
 #define  SUNXI_EFEX_VERIFY_ADDSUM		(1)
 #define  SUNXI_EFEX_VERIFY_CRC32		(2)
+
+
+typedef struct tag_FEX_LOG_BUF_INFO {
+	u32	buf_start;
+	u32	buf_size;
+} fex_log_buf_info_t;
 
 #endif
 

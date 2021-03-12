@@ -53,7 +53,7 @@ int do_sprite_test(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 		get_boot_work_mode() == WORK_MODE_UDISK_UPDATE) {
 		printf("run auto update\n");
 		sprite_led_init();
-		ret = sunxi_auto_update_main();
+		ret = run_command("auto_update_check 1", 0);
 		sprite_led_exit(ret);
 		if (!ret) {
 			printf("update finish,going to poweroff the system...\n");

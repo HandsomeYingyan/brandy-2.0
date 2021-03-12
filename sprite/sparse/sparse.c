@@ -10,6 +10,8 @@
 #include "sparse.h"
 #include "../sprite_verify.h"
 #include "sunxi_flash.h"
+#include "../cartoon/sprite_cartoon.h"
+
 #define SPARSE_FORMAT_TYPE_TOTAL_HEAD 0xff00
 #define SPARSE_FORMAT_TYPE_CHUNK_HEAD 0xff01
 #define SPARSE_FORMAT_TYPE_CHUNK_DATA 0xff02
@@ -95,7 +97,6 @@ int unsparse_direct_write(void *pbuf, uint length)
 	this_rest_size = last_rest_size + length;
 	tmp_buf	= (char *)pbuf - last_rest_size;
 	last_rest_size = 0;
-
 	while (this_rest_size > 0) {
 		switch (sparse_format_type) {
 		case SPARSE_FORMAT_TYPE_TOTAL_HEAD: {
@@ -128,7 +129,9 @@ int unsparse_direct_write(void *pbuf, uint length)
 				globl_header
 					.blk_sz; //当前数据块需要写入的数据长度
 			printf("chunk %d(%d)\n", chunk_count++, total_chunks);
-
+#ifdef CONFIG_SUNXI_SPRITE_CARTOON
+			sprite_cartoon_upgrade(10 + (70 * chunk_count)/total_chunks);
+#endif
 			switch (chunk->chunk_type) {
 			case CHUNK_TYPE_RAW:
 
@@ -187,7 +190,6 @@ int unsparse_direct_write(void *pbuf, uint length)
 							chunk_length >> 9,
 							tmp_buf)) {
 					printf("sparse: flash write failed\n");
-
 					return -1;
 				}
 				if (chunk_length & 511) {
@@ -233,7 +235,6 @@ int unsparse_direct_write(void *pbuf, uint length)
 							tmp_down_size >> 9,
 							tmp_buf)) {
 					printf("sparse: flash write failed\n");
-
 					return -1;
 				}
 				if (tmp_down_size & 511) {
@@ -268,14 +269,13 @@ int unsparse_direct_write(void *pbuf, uint length)
 					printf("fill data is not sector align 0\n");
 					return -1;
 				}
-				for (ii = 0;
-				     ii < sizeof(fillbuf) / sizeof(fillbuf[0]);
-				     ii++)
+				for (ii = 0; ii < sizeof(fillbuf)/sizeof(fillbuf[0]); ii++)
 					fillbuf[ii] = file_val;
 				for (ii = 0; ii < (chunk_length >> 12); ii++) {
 					if (!sunxi_sprite_write(flash_start, 8,
 								fillbuf)) {
 						printf("sparse: fill data write failed\n");
+
 						return -1;
 					}
 					flash_start += 8;
@@ -291,6 +291,7 @@ int unsparse_direct_write(void *pbuf, uint length)
 				sparse_format_type =
 					SPARSE_FORMAT_TYPE_CHUNK_FILL_DATA;
 			}
+
 			break;
 		}
 		default: {

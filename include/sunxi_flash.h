@@ -26,8 +26,6 @@
 #include <common.h>
 #include <sunxi_nand.h>
 
-
-
 /*normal*/
 int sunxi_flash_init(void);
 uint sunxi_flash_size(void);
@@ -38,6 +36,7 @@ int sunxi_flash_write(unsigned int start_block, unsigned int nblock,
 		      void *buffer);
 int sunxi_flash_flush(void);
 int sunxi_flash_erase(int erase, void *mbr_buffer);
+int sunxi_flash_erase_area(uint start_block, uint nblock);
 int sunxi_flash_force_erase(void);
 
 int sunxi_flash_phyread(unsigned int start_block, unsigned int nblock,
@@ -61,14 +60,18 @@ int sunxi_sprite_write(unsigned int start_block, unsigned int nblock,
 int sunxi_sprite_flush(void);
 int sunxi_sprite_erase(int erase, void *mbr_buffer);
 int sunxi_sprite_force_erase(void);
+int sunxi_sprite_write_end(void);
 
 int sunxi_sprite_phyread(unsigned int start_block, unsigned int nblock,
 			 void *buffer);
 int sunxi_sprite_phywrite(unsigned int start_block, unsigned int nblock,
 			  void *buffer);
+int sunxi_sprite_phyerase(unsigned int start_block, unsigned int nblock, void *skip);
 int sunxi_sprite_secstorage_read(int item, unsigned char *buf,
 				 unsigned int len);
 int sunxi_sprite_secstorage_write(int item, unsigned char *buf,
+				  unsigned int len);
+int sunxi_sprite_secstorage_fast_write(int item, unsigned char *buf,
 				  unsigned int len);
 int sunxi_sprite_download_spl(unsigned char *buf, int len, unsigned int ext);
 int sunxi_sprite_download_toc(unsigned char *buf, int len, unsigned int ext);
@@ -78,6 +81,13 @@ int sunxi_flash_init_ext(void);
 
 int sunxi_flash_boot_init(int storage_type, int workmode);
 int save_fdt_to_flash(void *fdt_buf, size_t fdt_size);
+
+int card_read_boot0(void *buffer, uint length);
+int sunxi_flash_update_boot0(void);
+int card_download_boot0(uint length, void *buffer, uint storage_type);
+int sunxi_flash_hook_init(void);
+int sunxi_flash_is_support_fast_write(int flash_type);
+int sunxi_secstorage_flush(void);
 
 #define SUNXI_SECSTORE_VERSION 1
 

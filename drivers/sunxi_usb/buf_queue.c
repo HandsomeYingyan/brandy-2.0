@@ -72,7 +72,7 @@ int buf_queue_init(void)
     buf_queue_head = buf_queue_tail = NULL;
 
     //malloc queue base buff
-    buf_queue_base_buf = ( u8*) malloc(buf_queue_page_size*buf_queue_max_len);
+	buf_queue_base_buf = (u8 *) memalign(CONFIG_SYS_CACHELINE_SIZE, buf_queue_page_size*buf_queue_max_len);
     if(buf_queue_base_buf == NULL) 
     {
         printf("sunxi usb efex queue error: malloc memory fail size 0x%x\n",
@@ -89,7 +89,7 @@ int buf_queue_init(void)
         element.buff = buf_queue_base_buf+i*buf_queue_page_size ;
   
         //malloc node memory
-        buf_node_t *node = ( buf_node_t*) malloc(sizeof(buf_node_t));
+	buf_node_t *node = (buf_node_t *) memalign(CONFIG_SYS_CACHELINE_SIZE, sizeof(buf_node_t));
         if(node == NULL) 
         {
              printf("sunxi usb efex queue error: malloc memory fail size 0x%zu\n",sizeof(buf_node_t));

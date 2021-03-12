@@ -43,19 +43,22 @@
 #ifdef CONFIG_SUNXI_CE_DRIVER
 #include <asm/arch/ce.h>
 #endif
-#include <pwm.h>
-#include <sunxi_ledc.h>
 #include <android_image.h>
 #include <sunxi_power/axp.h>
+#include <sunxi_power/power_manage.h>
 #include <sunxi_keybox.h>
 #include <boot_gui.h>
 #include <sunxi_bmp.h>
 #include <smc.h>
 #include <fdt_support.h>
+#include <asm/arch/dma.h>
 #ifdef CONFIG_SUNXI_REPLACE_FDT_FROM_PARTITION
 #include "sunxi_replace_fdt.h"
 #endif
-#include <asm/arch/dma.h>
+#include <sunxi_logo_display.h>
+#ifdef CONFIG_SUNXI_LRADC_VOL
+#include "sunxi_lradc_vol.h"
+#endif
 
 void set_boot_work_mode(int work_mode)
 {
@@ -65,6 +68,16 @@ void set_boot_work_mode(int work_mode)
 int get_boot_work_mode(void)
 {
 	return uboot_spare_head.boot_data.work_mode;
+}
+
+void set_boot_debug_mode(int debug_mode)
+{
+       gd->debug_mode = debug_mode;
+}
+
+int get_boot_debug_mode(void)
+{
+	return gd->debug_mode;
 }
 
 int get_boot_storage_type_ext(void)
@@ -89,6 +102,34 @@ void set_boot_storage_type(int storage_type)
 	uboot_spare_head.boot_data.storage_type = storage_type;
 }
 
+#ifdef CONFIG_SUNXI_GETH
+extern int geth_initialize(bd_t *bis);
+#ifdef CONFIG_PHY_SUNXI_ACX00
+extern int ephy_init(void);
+#endif
+#endif
+
+int board_eth_init(bd_t *bis)
+{
+	int rc = 0;
+
+	int workmode = uboot_spare_head.boot_data.work_mode;
+	if (!((workmode == WORK_MODE_BOOT) ||
+		(workmode == WORK_MODE_CARD_PRODUCT) ||
+		(workmode == WORK_MODE_SPRITE_RECOVERY))) {
+		return 0;
+	}
+
+#ifdef CONFIG_SUNXI_GETH
+#ifdef CONFIG_PHY_SUNXI_ACX00
+	ephy_init();
+#endif
+	rc = geth_initialize(bis);
+#endif
+
+	return rc;
+}
+
 int sunxi_probe_secure_monitor(void)
 {
 	return uboot_spare_head.boot_data.monitor_exist ==
@@ -105,7 +146,7 @@ int sunxi_probe_secure_os(void)
 int sunxi_get_secureboard(void)
 {
 #ifdef SID_SECURE_MODE
-	return readl(SID_SECURE_MODE) & 1;
+	return readl(IOMEM_ADDR(SID_SECURE_MODE)) & 1;
 #elif defined(SECURE_READ_TEST_REG)
 	/*
 	 * two way start up uboot:
@@ -168,12 +209,96 @@ int sunxi_probe_securemode(void)
 	return 0;
 }
 
+#if defined(CONFIG_SUNXI_BURN_ROTPK_ON_SPRITE) || \
+	defined(CONFIG_SUNXI_ROTPK_BURN_ENABLE_BY_TOOL)
+int sunxi_burn_rotpk(void)
+{
+	u8 hash[32] = { 0 }, readback_hash[32] = { 0 }, hash_zero[32] = { 0 };
+	int hash_len = 0;
+	int ret = 0;
+	efuse_key_info_t efuse_key_info;
+
+#if defined(CONFIG_SUNXI_ROTPK_BURN_ENABLE_BY_TOOL)
+	if ((uboot_spare_head.boot_data.func_mask &
+	     UBOOT_FUNC_MASK_BIT_BURN_ROTPK) !=
+	    UBOOT_FUNC_MASK_BIT_BURN_ROTPK) {
+		pr_msg("tool did not set rotpk burn flag, skip rotpk burn\n");
+		/* tool did not set uboot to burn rotpk, do not burn */
+		return 0;
+	}
+#endif
+
+	sunxi_ss_open();
+	if (sunxi_verify_get_rotpk_hash(hash)) {
+		pr_err("get rotpk failed\n");
+		return -1;
+	}
+
+	memset(&efuse_key_info, 0, sizeof(efuse_key_info));
+	efuse_key_info.len = 32;
+	memcpy(efuse_key_info.name, "rotpk", sizeof("rotpk"));
+	efuse_key_info.key_data = hash;
+
+	memset(readback_hash, 0, 32);
+	if (gd->securemode == SUNXI_NORMAL_MODE) {
+		sunxi_efuse_read("rotpk", readback_hash, &hash_len);
+	} else {
+		arm_svc_efuse_read("rotpk", readback_hash);
+	}
+
+	printf("read rotpk before write:\n");
+	sunxi_dump(readback_hash, 32);
+
+	if (memcmp(readback_hash, hash_zero, 32)) {
+		printf("puk hash not zero\n");
+		if (memcmp(readback_hash, hash_zero, 32)) {
+			printf("puk hash not same\n");
+			return -1;
+		} else {
+			printf("puk hash is same, skip burn rotpk\n");
+			return 0;
+		}
+	}
+
+	memset(readback_hash, 0, 32);
+	printf("now write rotpk:\n");
+	if (gd->securemode == SUNXI_NORMAL_MODE) {
+		if (sunxi_efuse_write(&efuse_key_info)) {
+			pr_err("burn rotpk failed");
+			return -1;
+		}
+		if (sunxi_efuse_read("rotpk", readback_hash, &hash_len)) {
+			pr_err("read puk hash fail\n");
+			return -1;
+		}
+	} else {
+		ret = arm_svc_efuse_write(&efuse_key_info);
+		if (ret) {
+			pr_err("svc burn rotpk failed with %d\n", ret);
+			return -1;
+		}
+		if (arm_svc_efuse_read("rotpk", readback_hash) != 32) {
+			pr_err("svc read puk hash fail\n");
+			return -1;
+		}
+	}
+	printf("rotpk burn done, using rotpk:\n");
+	sunxi_dump(readback_hash, 32);
+	if (memcmp(efuse_key_info.key_data, readback_hash, 32) != 0) {
+		pr_err("verify rotpk failed, firmware rotpk:\n");
+		sunxi_dump(efuse_key_info.key_data, 32);
+		return -1;
+	}
+
+	return 0;
+}
+#endif
+
 int sunxi_set_secure_mode(void)
 {
 	int mode;
 	u8  hash[32] = {0},hash_tmp[32] = {0};
 	int hash_len = 0;
-	__maybe_unused efuse_key_info_t efuse_key_info;
 
 	if ((gd->securemode == SUNXI_NORMAL_MODE) &&
 	    (gd->bootfile_mode == SUNXI_BOOT_FILE_TOC)) {
@@ -189,33 +314,10 @@ int sunxi_set_secure_mode(void)
 				return -1;
 			}
 
-#if CONFIG_SUNXI_BURN_ROTPK_ON_SPRITE
-			sunxi_ss_open();
-			if (sunxi_verify_get_rotpk_hash(hash)) {
-				printf("get rotpk failed\n");
+#if defined(CONFIG_SUNXI_BURN_ROTPK_ON_SPRITE) || \
+	defined(CONFIG_SUNXI_ROTPK_BURN_ENABLE_BY_TOOL)
+			if (sunxi_burn_rotpk())
 				return -1;
-			}
-
-			efuse_key_info.len = 32;
-			memcpy(efuse_key_info.name, "rotpk", sizeof("rotpk"));
-			efuse_key_info.key_data = hash;
-			if (sunxi_efuse_write(&efuse_key_info)) {
-				printf("burn rotpk failed");
-
-				return -1;
-			}
-			memset(hash_tmp, 0, 32);
-			if (sunxi_efuse_read("rotpk", hash_tmp, &hash_len)) {
-				printf("read puk hash fail\n");
-				return -1;
-			}
-			printf("rotpk burn done, using rotpk:\n");
-			sunxi_dump(hash_tmp, 32);
-			if (memcmp(efuse_key_info.key_data, hash_tmp, 32) != 0) {
-				printf("verify rotpk failed, firmware rotpk:\n");
-				sunxi_dump(efuse_key_info.key_data, 32);
-				return -1;
-			}
 #endif
 
 			if (sid_set_security_mode()) {
@@ -260,6 +362,58 @@ void set_boot_dram_update_flag(u32 *dram_para)
 	pdram->dram_tpr13 = flag;
 }
 
+u32 get_boot_dram_update_flag(void)
+{
+	u32 flag = 0;
+	/* boot pass dram para to uboot */
+	/* dram_tpr13:bit31 */
+	/* 0:uboot update boot0  1: not */
+	__dram_para_t *pdram = (__dram_para_t *)uboot_spare_head.boot_data.dram_para;
+	flag = (pdram->dram_tpr13 >> 31) & 0x1;
+	return flag == 0 ? 1:0;
+}
+
+/*
+ * sunxi_parsed_specific_string() - Parse the string skipped by skip_character at intervals of space_character
+ * @intput_string: the string to be parsed
+ * @output_para[][16]: store the parsed string
+ * @space_character: characters separated by space_character
+ * @skip_character: skip when encountering skip_character, 0 is invalid
+ *
+ * exp:
+ * 	the string to be parsed:"bootloader, env,boot,vendor_boot, dtbo"
+ * 	space_character = ','
+ * 	skip_character = ' '
+ * output:
+ * 	output_para[0] = bootloader
+ * 	output_para[1] = env
+ * 	output_para[2] = boot
+ * 	output_para[3] = vendor_boot
+ * 	output_para[4] = dtbo
+ *
+ */
+int sunxi_parsed_specific_string(char *intput_string, char output_para[][16], char space_character, char skip_character)
+{
+	int i, j, k;
+	for (i = 0, j = 0, k = 0;; i++) {
+		if ((skip_character != 0) && (intput_string[i] == skip_character)) {
+			continue;
+		} else if ((intput_string[i] == space_character) || (intput_string[i] == 0)) {
+			output_para[k][j] = 0;
+			k++;
+			j = 0;
+			if (intput_string[i] == 0)
+				break;
+		} else {
+			output_para[k][j] = intput_string[i];
+			j++;
+		}
+	}
+	/* for (i = 0; i < k; i++)
+	 *         printf("output_para[%d]:%s\n", i, output_para[i]); */
+	return 0;
+}
+
 int initr_sunxi_display(void)
 {
 	int ret = 0;
@@ -286,8 +440,10 @@ int initr_sunxi_eink(void)
 		return 0;
 	}
 	eink_driver_init();
+#if 0
 	sunxi_eink_fresh_image("bootlogo.bmp", 0x04);
 	__udelay(3000);
+#endif
 	return 0;
 }
 #endif
@@ -318,6 +474,19 @@ int sunxi_boot_init_gpio(void)
 
 	return 0;
 }
+
+#ifdef CONFIG_PMIC_TPS65185
+int tps65185_modules_init(void)
+{
+	int ret = 0;
+
+	ret = tps65185_init();
+
+	if (ret)
+		pr_msg("tps65185 init failed ret = %d\n", ret);
+	return 0;
+}
+#endif
 
 int board_early_init_r(void)
 {
@@ -355,7 +524,7 @@ void sunxi_early_logo_display(void)
 {
 	void *bpk_logo_addr;
 	int ret		  = -1;
-
+	int work_mode = get_boot_work_mode();
 #ifdef CONFIG_SUNXI_ADVERT_PICTURE
 	int advert_enable = 0;
 	ret = script_parser_fetch("/soc/target", "advert_enable",
@@ -366,7 +535,10 @@ void sunxi_early_logo_display(void)
 	}
 #endif
 
-	if (gd->boot_logo_addr) {
+	if (work_mode == WORK_MODE_CARD_PRODUCT
+		|| work_mode == WORK_MODE_CARD_UPDATE) {
+		boot_gui_init();
+	} else if (gd->boot_logo_addr) {
 		boot_gui_init();
 		bpk_logo_addr = sunxi_prepare_bpk_bootlogo();
 		if (bpk_logo_addr) {
@@ -405,6 +577,53 @@ void board_bootlogo_display(void)
 #endif
 }
 #endif
+int board_env_late_init(void)
+{
+	if (get_boot_work_mode() == WORK_MODE_BOOT) {
+#ifdef CONFIG_SUNXI_KEYBOX
+		sunxi_keybox_init();
+#endif
+	}
+	return 0;
+}
+
+#ifdef CONFIG_SUNXI_OTA_TURNNING
+int update_boot0_head_for_ota(void)
+{
+#ifdef FPGA_PLATFORM
+	return 0;
+#else
+	int ret = 0;
+#ifdef CONFIG_MMC_SUNXI
+	int storage_type = get_boot_storage_type();
+	int card_num = 2;
+
+	if (storage_type == STORAGE_EMMC3) {
+		card_num = 3;
+	} else if (storage_type == STORAGE_SD) {
+		return 0;
+	}
+	ret = mmc_request_update_boot0(card_num);
+#endif
+#ifdef CONFIG_SUNXI_TURNNING_DRAM
+	if (!ret) {
+		ret = get_boot_dram_update_flag();
+	}
+#endif
+	if (ret) {
+		pr_debug("begin to update boot0 atfer ota\n");
+		ret = sunxi_flash_update_boot0();
+		pr_msg("update boot0 %s\n", ret == 0 ? "success" : "fail");
+		/* if update fail, should reset the system */
+		/* if(ret) */
+		/* { */
+		/* do_reset(NULL, 0, 0,NULL); */
+		/* } */
+	}
+	return ret;
+#endif
+}
+#endif
 
 int board_late_init(void)
 {
@@ -412,32 +631,40 @@ int board_late_init(void)
 #ifdef CONFIG_SUNXI_SWITCH_SYSTEM
 		sunxi_auto_switch_system();
 #endif
-#ifdef CONFIG_BOOT_GUI
-		board_bootlogo_display();
+
+#ifdef CONFIG_PMIC_TPS65185
+		tps65185_modules_init();
 #endif
-#ifdef CONFIG_SUNXI_KEYBOX
-		sunxi_keybox_init();
+
+#ifdef CONFIG_EINK200_SUNXI
+		sunxi_eink_fresh_image("bootlogo.bmp", 0x04);
+		__udelay(3000);
 #endif
+
+#ifdef CONFIG_SUNXI_ARISC_EXIST
+		sunxi_arisc_probe();
+#endif
+#ifdef CONFIG_SUNXI_OTA_TURNNING
+		update_boot0_head_for_ota();
+#endif
+
 #ifdef CONFIG_SUNXI_ANDROID_BOOT
 		sunxi_fastboot_status_read();
 #endif
 
-#ifdef CONFIG_OF_SEPARATE
-#ifdef CONFIG_SUNXI_REPLACE_FDT_FROM_PARTITION
-		sunxi_replace_fdt();
-		sunxi_update_fdt_para_for_kernel();
-#endif
-#else  /* not default CONFIG_OF_SEPARATE */
-		sunxi_update_fdt_para_for_kernel();
-#endif
 #ifdef CONFIG_SUNXI_USER_KEY
 		/* update mac/wifi serial info in env */
 		extern int update_user_data(void);
 		update_user_data();
 #endif
-#ifdef CONFIG_SUNXI_MAC
-		extern int update_sunxi_mac(void);
-		update_sunxi_mac();
+#ifdef CONFIG_SUNXI_CHECK_LIMIT_VERIFY
+		int sunxi_check_cpu_gpu_verify(void);
+		sunxi_check_cpu_gpu_verify();
+#endif
+
+#ifdef CONFIG_SUNXI_CHECK_CUSTOMER_RESERVED_ID
+		int sunxi_check_customer_reserved_id(void);
+		sunxi_check_customer_reserved_id();
 #endif
 
 #ifdef CONFIG_SUNXI_UBIFS
@@ -446,32 +673,41 @@ int board_late_init(void)
 		else
 #endif
 		sunxi_update_partinfo();
-		sunxi_update_rotpk_info();
+		if (sunxi_update_rotpk_info()) {
+			return -1;
+		}
+#ifdef CONFIG_SUNXI_POWER
+		sunxi_update_axp_info();
+#ifdef CONFIG_SUNXI_BMU
+		axp_battery_status_handle();
+#endif
+#endif
 		sunxi_respond_ir_key_action();
 		sunxi_update_bootcmd();
 #ifdef CONFIG_SUNXI_SERIAL
 		sunxi_set_serial_num();
 #endif
-//Temporarily to modify the XR829 wifi interrupt sampling rate
-#ifdef CONFIG_SUNXI_GPIO_INT_DEB
-		user_gpio_set_t gpio_deb;
-		int ret = fdt_get_wlan_status();
-		if (ret == 1) {
-			if (!fdt_get_one_gpio("/soc/wlan", "wlan_hostwake", &gpio_deb)) {
-				printf("wlan_hostwake port(%d) interrupt clock set to 24Mhz\n", gpio_deb.port);
-				int_deb_set_gpio(gpio_deb.port, 1);
-			}
-		}
+#ifdef CONFIG_SUNXI_LRADC_VOL
+		sunxi_read_lradc_vol();
+#endif
+#if !defined(CONFIG_OF_SEPARATE)
+		sunxi_update_fdt_para_for_kernel();
+#elif defined(CONFIG_SUNXI_NECESSARY_REPLACE_FDT)
+		sunxi_replace_fdt_v2();
+		sunxi_update_fdt_para_for_kernel();
+#elif defined(CONFIG_SUNXI_REPLACE_FDT_FROM_PARTITION)
+		sunxi_replace_fdt();
+		sunxi_update_fdt_para_for_kernel();
 #endif
 	}
 	return 0;
 }
 
 
-uint sunxi_generate_checksum(void *buffer, uint length, uint src_sum)
+uint sunxi_generate_checksum(void *buffer, uint length, uint div, uint src_sum)
 {
 	uint *buf;
-	uint count;
+	int count;
 	uint sum;
 
 	count = length >> 2;
@@ -482,7 +718,7 @@ uint sunxi_generate_checksum(void *buffer, uint length, uint src_sum)
 		sum += *buf++;
 		sum += *buf++;
 		sum += *buf++;
-	} while ((count -= 4) > (4 - 1));
+	} while ((count -= (4*div)) > (4 - 1));
 
 	while (count-- > 0)
 		sum += *buf++;
@@ -492,10 +728,11 @@ uint sunxi_generate_checksum(void *buffer, uint length, uint src_sum)
 	return sum;
 }
 
+
 int sunxi_verify_checksum(void *buffer, uint length, uint src_sum)
 {
 	uint sum;
-	sum = sunxi_generate_checksum(buffer, length, src_sum);
+	sum = sunxi_generate_checksum(buffer, length, 1, src_sum);
 
 	debug("src sum=%x, check sum=%x\n", src_sum, sum);
 	if (sum == src_sum)
@@ -514,7 +751,8 @@ void reset_misc(void)
   */
 void board_quiesce_devices(void)
 {
-	sunxi_flash_exit(1);
+	/*modify 2 for nor to finally exit*/
+	sunxi_flash_exit(2);
 #ifdef CONFIG_SPI_USE_DMA
 	sunxi_dma_exit();
 #endif
@@ -560,131 +798,6 @@ int sunxi_board_run_fel(void)
 	return 0;
 }
 
-static void sunxi_update_remind_GPIO_LED(int node)
-{
-	int i;
-	u32 gpio_led_port[8];
-	u32 led_port;
-
-	if (fdt_getprop_u32(working_fdt, node, "gpio_led_port", &gpio_led_port) < 0) {
-		printf("can't get gpio_led_port\n");
-	} else {
-		led_port = (gpio_led_port[1] << 5) | gpio_led_port[2];
-		gpio_direction_output(led_port,1);
-		for(i = 3; i > 0; i--) {
-			__msdelay(1000);
-			gpio_direction_output(led_port,0);
-			__msdelay(1000);
-			gpio_direction_output(led_port,1);
-		}
-	}
-}
-
-#define PWM_LED_PERIOD (10000)
-#define MAX_VALUE (255)
-
-struct pwm_led {
-	int pwm_num;
-	int value;
-	char label[16];
-};
-
-static int _set_one_pwm_led(struct pwm_led led)
-{
-	unsigned int duty_ns, period_ns, level;
-	if (led.value != 0) {
-		period_ns = PWM_LED_PERIOD;
-		level = MAX_VALUE - led.value;
-		if (level == 0) /* for pwm, duty_ns shoule not be zero */
-		level = 1;
-		duty_ns = (period_ns * level) / MAX_VALUE;
-		pwm_config(led.pwm_num, duty_ns, period_ns);
-		pwm_enable(led.pwm_num);
-	} else {
-		pwm_disable(led.pwm_num);
-	}
-	return 0;
-}
-
-static void sunxi_update_remind_PWM_LED(int node)
-{
-	int i;
-	struct pwm_led remind_pwm_led;
-	u32 pwm_channel;
-	if (fdt_getprop_u32(working_fdt, node, "pwm_led_channel", &pwm_channel) < 0) {
-		printf("can't get pwm_channel\n");
-		return;
-	} else {
-		pwm_init();
-		remind_pwm_led.pwm_num = pwm_channel;
-		pwm_request(remind_pwm_led.pwm_num, "pwm_led");
-
-		remind_pwm_led.value = 255;
-		_set_one_pwm_led(remind_pwm_led);
-
-		for(i = 3; i > 0; i--) {
-			__msdelay(1000);
-			remind_pwm_led.value = 0;
-			_set_one_pwm_led(remind_pwm_led);
-			__msdelay(1000);
-			remind_pwm_led.value = 255;
-			_set_one_pwm_led(remind_pwm_led);
-		}
-	}
-}
-
-#ifdef CONFIG_SUNXI_LEDC
-
-static void sunxi_update_remind_LEDC_LED(int node)
-{
-	int i;
-	int led_count = 1;
-	int led_g1 = 255, led_r1 = 0, led_b1 = 0;
-	int led_g2 = 0, led_r2 = 0, led_b2 = 0;
-
-	sunxi_ledc_init();
-
-	sunxi_set_led_brightness(led_count, led_g1, led_r1, led_b1);
-	for(i = 3; i > 0; i--) {
-		__msdelay(1000);
-		sunxi_set_led_brightness(led_count, led_g2, led_r2, led_b2);
-		__msdelay(1000);
-		sunxi_set_led_brightness(led_count, led_g1, led_r1, led_b1);
-	}
-}
-
-#endif
-
-void sunxi_update_remind(void)
-{
-	printf("==================================================\n");
-	printf("|                                                |\n");
-	printf("|                 update  finish                 |\n");
-	printf("|                                                |\n");
-	printf("==================================================\n");
-	int nodeoffset;
-	char *remind_type = NULL;
-	nodeoffset = fdt_path_offset(working_fdt, "/soc/update_remind");
-	if (nodeoffset > 0) {
-			fdt_getprop_string(working_fdt, nodeoffset, "remind_type", &remind_type);
-			if (strcmp(remind_type, "GPIO_LED") == 0) {
-				printf("remind_type : %s\n", remind_type);
-				sunxi_update_remind_GPIO_LED(nodeoffset);
-			} else if (strcmp(remind_type, "PWM_LED") == 0) {
-				printf("remind_type : %s\n", remind_type);
-				sunxi_update_remind_PWM_LED(nodeoffset);
-#ifdef CONFIG_SUNXI_LEDC
-			} else if (strcmp(remind_type, "LEDC_LED") == 0) {
-				printf("remind_type : %s\n", remind_type);
-				sunxi_update_remind_LEDC_LED(nodeoffset);
-#endif
-			} else {
-				printf("remind_type : other\n");
-				//If you use other reminders, you need to implement them yourself.
-			}
-	}
-}
-
 void sunxi_update_subsequent_processing(int next_work)
 {
 	printf("next work %d\n", next_work);
@@ -697,7 +810,9 @@ void sunxi_update_subsequent_processing(int next_work)
 
 	case SUNXI_UPDATE_NEXT_ACTION_SHUTDOWN:
 		printf("SUNXI_UPDATE_NEXT_ACTION_SHUTDOWN\n");
+#ifdef CONFIG_SUNXI_UPDATE_REMIND
 		sunxi_update_remind();
+#endif
 		sunxi_board_shutdown();
 		break;
 
@@ -710,7 +825,9 @@ void sunxi_update_subsequent_processing(int next_work)
 	case SUNXI_UPDATE_NEXT_ACTION_NORMAL:
 	default:
 		printf("SUNXI_UPDATE_NEXT_ACTION_NULL\n");
+#ifdef CONFIG_SUNXI_UPDATE_REMIND
 		sunxi_update_remind();
+#endif
 		break;
 	}
 
@@ -749,3 +866,42 @@ void *sunxi_prepare_bpk_bootlogo(void)
 	}
 	return buf;
 }
+
+#ifdef CONFIG_SUNXI_USB_DETECT
+extern volatile int sunxi_usb_detect_flag;
+extern int sunxi_usb_init(int delaytime);
+extern int sunxi_usb_exit(void);
+int sunxi_usb_detect(void)
+{
+	int ret = -1;
+	ulong begin_time = 0, over_time = 0;
+
+	if (sunxi_usb_dev_register(6) < 0) {
+		printf("usb detect fail: not support usb detect \n");
+		return ret;
+	}
+	if (sunxi_usb_init(0)) {
+		printf("%s usb init fail\n", __func__);
+		sunxi_usb_exit();
+		return ret;
+	}
+
+	begin_time = get_timer(0);
+	over_time = 800;
+	while (1) {
+		if (sunxi_usb_detect_flag) {
+			printf("[%s] usb detect ok\n", __func__);
+			ret = 0;
+			break;
+		}
+		if (get_timer(begin_time) > over_time) {
+			printf("overtime\n");
+			printf("usb : no usb exist\n");
+			ret = -1;
+			break;
+		}
+	}
+	sunxi_usb_exit();
+	return ret;
+}
+#endif

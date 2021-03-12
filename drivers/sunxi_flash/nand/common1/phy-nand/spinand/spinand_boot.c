@@ -499,13 +499,14 @@ int spinand_read_uboot_one_in_block(unsigned char *buf, unsigned int len, unsign
 
 	memset(oob_buf, 0xff, 64);
 
-	if (len % pagesize) {
-		SPINAND_DBG("uboot length check error!\n");
-		NAND_Free(ptr, pagesize);
-		return 0;
+	if (pagesize) {
+		if (len % pagesize) {
+			SPINAND_DBG("uboot length check error!\n");
+			NAND_Free(ptr, pagesize);
+			return 0;
+		}
+		total_pages = len / pagesize;
 	}
-
-	total_pages = len / pagesize;
 
 	for (j = 0, page_index = 0; j < pages_per_block; j++) {
 		para.chip = 0;
@@ -1030,7 +1031,7 @@ int spinand_physic_info_get_one_copy(unsigned int start_block, unsigned int page
 	int ret;
 	unsigned int phyinfo_page_cnt, page_cnt;
 	unsigned int badblk_num = 0;
-	unsigned int pages_per_phyinfo;
+	unsigned int pages_per_phyinfo = 0;
 	void *tempbuf = NULL;
 	struct boot_physical_param para;
 
@@ -1038,9 +1039,11 @@ int spinand_physic_info_get_one_copy(unsigned int start_block, unsigned int page
 	size_per_page = nand_get_pae_size();
 	pages_per_block = nand_get_page_cnt_per_block();
 
+	if (size_per_page) {
 	pages_per_phyinfo = PHY_INFO_SIZE / size_per_page;
 	if (PHY_INFO_SIZE % size_per_page)
 		pages_per_phyinfo++;
+	}
 
 	//	SPINAND_DBG("pages_per_phyinfo %d\n",pages_per_phyinfo);
 
@@ -1126,14 +1129,16 @@ int spinand_physic_info_get_one_copy(unsigned int start_block, unsigned int page
 *****************************************************************************/
 int spinand_add_len_to_uboot_tail(unsigned int uboot_size)
 {
-	unsigned int size_per_page, pages_per_uboot;
+	unsigned int size_per_page, pages_per_uboot = 1;
 	unsigned int jump_size;
 
 	size_per_page = nand_get_pae_size();
 
+	if (size_per_page) {
 	pages_per_uboot = uboot_size / size_per_page;
 	if (uboot_size % size_per_page)
 		pages_per_uboot++;
+	}
 
 	jump_size = size_per_page * pages_per_uboot - uboot_size;
 

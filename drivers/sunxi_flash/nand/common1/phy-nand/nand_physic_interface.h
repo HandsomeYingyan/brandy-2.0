@@ -33,7 +33,7 @@ int nand_physic_read_page(unsigned int chip, unsigned int block, unsigned int pa
 int nand_physic_write_page(unsigned int chip, unsigned int block, unsigned int page, unsigned int bitmap, unsigned char *mbuf, unsigned char *sbuf);
 int nand_physic_bad_block_check(unsigned int chip, unsigned int block);
 int nand_physic_bad_block_mark(unsigned int chip, unsigned int block);
-int nand_physic_block_copy(unsigned int chip_s, unsigned int block_s, unsigned int chip_d, unsigned int block_d);
+int nand_physic_block_copy(unsigned int chip_s, unsigned int block_s, unsigned int chip_d, unsigned int block_d, unsigned int copy_nums);
 int read_virtual_page(unsigned int nDieNum, unsigned int nBlkNum, unsigned int nPage, uint64 SectBitmap, void *pBuf, void *pSpare);
 int write_virtual_page(unsigned int nDieNum, unsigned int nBlkNum, unsigned int nPage, uint64 SectBitmap, void *pBuf, void *pSpare);
 int erase_virtual_block(unsigned int nDieNum, unsigned int nBlkNum);

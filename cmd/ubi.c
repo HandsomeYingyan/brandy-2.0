@@ -24,12 +24,25 @@
 #include <ubi_uboot.h>
 #include <linux/errno.h>
 #include <jffs2/load_kernel.h>
-#include <linux/mtd/aw-spinand.h>
+
+/*
+ *#ifdef CONFIG_AW_MTD_SPINAND
+ *#include <linux/mtd/aw-spinand.h>
+ *#endif
+ */
+
+/*
+ *#ifdef CONFIG_AW_MTD_RAWNAND
+ *#include <linux/mtd/aw-rawnand.h>
+ *#endif
+ */
 
 #ifdef CONFIG_UBI_OFFLINE_BURN
 #include <sunxi_board.h>
 #include "ubi_simu.h"
 #endif
+
+#include <linux/mtd/aw-ubi.h>
 
 #undef ubi_msg
 #define ubi_msg(fmt, ...) printf("UBI: " fmt "\n", ##__VA_ARGS__)
@@ -362,7 +375,7 @@ int ubi_volume_read(char *volume, char *buf, size_t size)
 		size = vol->used_bytes;
 	}
 
-	printf("Read %zu bytes from volume %s to %p\n", size, volume, buf);
+	pr_debug("Read %zu bytes from volume %s to %p\n", size, volume, buf);
 
 	if (vol->corrupted)
 		printf("read from corrupted volume %d", vol->vol_id);
@@ -582,7 +595,9 @@ static int do_ubi(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 		if (!size) {
 			size = (int64_t)ubi->avail_pebs * ubi->leb_size;
 			printf("No size specified -> Using max size (%lld)\n", size);
-			spinand_mtd_set_last_vol_sects(size / 512);
+#ifdef CONFIG_SUNXI_UBIFS
+			mtd_set_last_vol_sects(size / 512);
+#endif
 		}
 		/* E.g., create volume */
 		if (argc == 3)

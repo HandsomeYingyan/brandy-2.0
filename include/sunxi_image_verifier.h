@@ -18,6 +18,7 @@ extern int sunxi_verify_partion(struct sunxi_image_verify_pattern_st *pattern, c
 extern int sunxi_verify_preserve_toc1(void *toc1_head_buf);
 extern int sunxi_verify_get_rotpk_hash(void *hash_buf);
 
-extern int verify_image_by_vbmeta(const char *image_name, const uint8_t *image_data,
-			   size_t image_len, const uint8_t *vb_data,
-			   size_t vb_len);
+extern int verify_image_by_vbmeta(const char *image_name,
+				  const uint8_t *image_data, size_t image_len,
+				  const uint8_t *vb_data, size_t vb_len,
+				  const char *pubkey_in_toc1);

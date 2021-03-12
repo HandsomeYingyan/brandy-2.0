@@ -13,7 +13,7 @@
 #include <sunxi_mbr.h>
 #include <part_efi.h>
 #include <sunxi_flash.h>
-#include <spare_head.h>
+#include <sys_partition.h>
 
 #define  SUNXI_SPRITE_PROTECT_DATA_MAX    (16)
 #define  SUNXI_SPRITE_PROTECT_PART        "private"
@@ -36,8 +36,6 @@ int sunxi_sprite_store_part_data(void *buffer)
 	u32  part_start = 0;
 	gpt_header *gpt_head = (gpt_header *)(buffer + GPT_HEAD_OFFSET);
 	gpt_entry  *entry    = (gpt_entry*)(buffer + GPT_ENTRY_OFFSET);
-	int storage_type = get_boot_storage_type();
-	int ret;
 
 	/* check GPT first*/
 	if(gpt_head->signature != GPT_HEADER_SIGNATURE) {
@@ -53,11 +51,19 @@ int sunxi_sprite_store_part_data(void *buffer)
 		}
 		printf("part %d name %s\n", i, part_name);
 		printf("keydata = 0x%x\n", entry[i].attributes.fields.keydata);
-		part_start =  entry[i].starting_lba;
-		part_len = entry[i].ending_lba - entry[i].starting_lba + 1;
 		if( (!strcmp((const char *)part_name, SUNXI_SPRITE_PROTECT_PART))
 			|| entry[i].attributes.fields.keydata == 0x1)
 		{
+			int storage_type = get_boot_storage_type();
+			int logic_offset;
+			if (storage_type == STORAGE_EMMC || storage_type == STORAGE_EMMC3
+				|| storage_type == STORAGE_SD || storage_type == STORAGE_EMMC0) {
+				logic_offset = 40960;
+			} else {
+				logic_offset = 0;
+			}
+			part_start =  entry[i].starting_lba - logic_offset;
+			part_len = entry[i].ending_lba - entry[i].starting_lba + 1;
 			printf("find keypart %s\n", part_name);
 			printf("keypart read start: 0x%x, sectors 0x%x\n", part_start, part_len);
 
@@ -68,11 +74,8 @@ int sunxi_sprite_store_part_data(void *buffer)
 
 				goto __sunxi_sprite_store_part_data_fail;
 			}
-			if ((storage_type == STORAGE_NAND) || (storage_type == STORAGE_SPI_NAND))
-				ret = sunxi_sprite_read(part_start, part_len, (void *)part_info[j].part_buf);
-			else
-				ret = sunxi_sprite_phyread(part_start, part_len, (void *)part_info[j].part_buf);
-			if(!ret) {
+			if(!sunxi_sprite_read(part_start, part_len, (void *)part_info[j].part_buf))
+			{
 				printf("read private data error\n");
 
 				goto __sunxi_sprite_store_part_data_fail;
@@ -117,8 +120,6 @@ int sunxi_sprite_restore_part_data(void *buffer)
 	gpt_header *gpt_head	= (gpt_header *)(buffer + GPT_HEAD_OFFSET);
 	gpt_entry *entry	    = (gpt_entry *)(buffer + GPT_ENTRY_OFFSET);
 	uint down_sectors;
-	int storage_type = get_boot_storage_type();
-	int ret;
 
 	/* check GPT first*/
 	if (gpt_head->signature != GPT_HEADER_SIGNATURE) {
@@ -134,9 +135,16 @@ int sunxi_sprite_restore_part_data(void *buffer)
 				part_name[index] =
 					(char)(entry[i].partition_name[index]);
 			}
-			part_start = entry[i].starting_lba;
-			part_len =
-				entry[i].ending_lba - entry[i].starting_lba + 1;
+			int storage_type = get_boot_storage_type();
+			int logic_offset;
+			if (storage_type == STORAGE_EMMC || storage_type == STORAGE_EMMC3
+				|| storage_type == STORAGE_SD || storage_type == STORAGE_EMMC0) {
+				logic_offset = 40960;
+			} else {
+				logic_offset = 0;
+			}
+			part_start =  entry[i].starting_lba - logic_offset;
+			part_len = entry[i].ending_lba - entry[i].starting_lba + 1;
 			if (!strcmp((const char *)part_name,
 				    part_info[j].part_name)) {
 				if (part_len < down_sectors) {
@@ -147,11 +155,9 @@ int sunxi_sprite_restore_part_data(void *buffer)
 				}
 				printf("keypart write start: 0x%x, sectors 0x%x\n",
 				       part_start, down_sectors);
-				if ((storage_type == STORAGE_NAND) || (storage_type == STORAGE_SPI_NAND))
-					ret = sunxi_sprite_write(part_start, part_len, (void *)part_info[j].part_buf);
-				else
-					ret = sunxi_sprite_phywrite(part_start, part_len, (void *)part_info[j].part_buf);
-				if(!ret) {
+				if (!sunxi_sprite_write(
+					    part_start, down_sectors,
+					    (void *)part_info[j].part_buf)) {
 					printf("sunxi sprite error : write private data error\n");
 
 					goto __sunxi_sprite_restore_part_data_fail;
@@ -217,7 +223,7 @@ int sunxi_sprite_erase_private_key(void *buffer)
 	if(i >= mbr->PartCount)
 	{
 		printf("private part is not exit \n");
-		return -1;
+		return -2;
 	}
 
 	fill_zero = (char *)memalign(CONFIG_SYS_CACHELINE_SIZE, ALIGN(len, CONFIG_SYS_CACHELINE_SIZE));

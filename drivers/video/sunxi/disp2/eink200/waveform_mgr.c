@@ -509,7 +509,7 @@ int init_waveform(const char *path, u32 bit_num)
 
 	u32 *pAddr = NULL;
 
-	size_t waveform_buff_len = 2 << 20;/*2M*/
+	size_t waveform_buff_len = 10 << 20;/* 10M */
 
 	char *waveform_argv[6] = { "fatload", "sunxi_flash", "0:0", "00000000", waveform_path, NULL };
 
@@ -540,10 +540,11 @@ int init_waveform(const char *path, u32 bit_num)
 		ret = -ENOMEM;
 		goto error;
 	}
-	printf("g_waveform_file.p_wf_vaddr %lx\n", (ulong)g_waveform_file.p_wf_vaddr);
+	EINK_INFO_MSG("g_waveform_file.p_wf_vaddr %lx\n", (ulong)g_waveform_file.p_wf_vaddr);
 
 	g_waveform_file.p_wf_paddr = (unsigned long)g_waveform_file.p_wf_vaddr;
 
+#ifdef DRIVER_REMAP_WAVEFILE
 	g_waveform_file.rearray_vaddr = (char *)malloc_aligned(waveform_buff_len, ARCH_DMA_MINALIGN);
 	EINK_INFO_MSG("rearray_vaddr = 0x%p\n", g_waveform_file.rearray_vaddr);
 	if (!g_waveform_file.rearray_vaddr) {
@@ -554,7 +555,7 @@ int init_waveform(const char *path, u32 bit_num)
 	g_waveform_file.rearray_paddr = (unsigned long)g_waveform_file.rearray_vaddr;
 
 	memset(g_waveform_file.rearray_vaddr, 0, waveform_buff_len);
-
+#endif
 	/*set wav decode addr is CONFIG_SYS_SDRAM_BASE*/
 	sprintf(waveform_addr, "%lx", (ulong)g_waveform_file.p_wf_vaddr);
 	waveform_argv[3] = waveform_addr;
@@ -615,9 +616,9 @@ int init_waveform(const char *path, u32 bit_num)
 	g_waveform_file.p_gld16_wf = (unsigned long)(g_waveform_file.p_wf_paddr + *pAddr);
 
 	print_wavefile_mode_mapping(g_waveform_file);
-
+ #ifdef DRIVER_REMAP_WAVEFILE
 	eink_set_rearray_wavedata(bit_num);
-
+#endif
 	g_waveform_file.load_flag = 1;
 
 	pr_info("load waveform file(%s) successfully\n", path);
@@ -625,12 +626,12 @@ int init_waveform(const char *path, u32 bit_num)
 
 error:
 	g_waveform_file.load_flag = 0;
-
+#ifdef DRIVER_REMAP_WAVEFILE
 	if (g_waveform_file.rearray_vaddr)   {
 		free_aligned(g_waveform_file.rearray_vaddr);
 		g_waveform_file.rearray_vaddr = NULL;
 	}
-
+#endif
 	if (g_waveform_file.p_wf_vaddr)   {
 		free_aligned(g_waveform_file.p_wf_vaddr);
 		g_waveform_file.p_wf_vaddr = NULL;

@@ -65,10 +65,7 @@ int eink_driver_init(void)
 	int node_offset = 0;
 	struct eink_driver_info *drvdata = NULL;
 
-	printf("[%s]:\n", __func__);
-
 	eink_fdt_init();
-	clk_init();
 
 	drvdata = &g_eink_drvdata;
 

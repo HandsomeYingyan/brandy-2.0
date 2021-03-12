@@ -13,7 +13,7 @@
  */
 
 /*boot0 size refer to brom, need consistent with brom configuration*/
-#if defined(CONFIG_ARCH_SUN8IW18)
+#if defined(CONFIG_ARCH_SUN8IW18) || defined(CONFIG_MACH_SUN50IW11)
 #define NAND_BOOT0_PAGE_CNT_PER_COPY	NAND_BOOT0_PAGE_CNT_PER_COPY_4
 #else
 #define NAND_BOOT0_PAGE_CNT_PER_COPY	NAND_BOOT0_PAGE_CNT_PER_COPY_2

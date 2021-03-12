@@ -24,8 +24,14 @@ obj-$(CONFIG_SUNXI_BURN)	+= key_burn.o
 obj-$(CONFIG_CMD_SUNXI_AUTO_FEL)	+= sunxi_auto_fel.o
 obj-$(CONFIG_SUNXI_SERIAL)	+= sunxi_serial.o
 obj-$(CONFIG_SUNXI_KEYBOX)	+= sunxi_keybox.o
-obj-$(CONFIG_SUNXI_REPLACE_FDT_FROM_PARTITION)	+= sunxi_replace_fdt.o
 obj-y += sunxi_bootargs.o
 obj-y += android/
 obj-y += homlet/
 obj-$(CONFIG_SUNXI_POWER)     += power_manage.o
+obj-$(CONFIG_SUNXI_SWITCH_SYSTEM) += sunxi_switch_system.o
+obj-$(CONFIG_SUNXI_UPDATE_REMIND) += sunxi_update_remind.o
+ifneq ($(CONFIG_SUNXI_REPLACE_FDT_FROM_PARTITION)$(CONFIG_SUNXI_NECESSARY_REPLACE_FDT),)
+obj-y += sunxi_replace_fdt.o
+endif
+obj-$(CONFIG_SUNXI_LRADC_VOL)	+= sunxi_lradc_vol.o
+obj-$(CONFIG_SUNXI_MIPS) += sunxi_mips.o

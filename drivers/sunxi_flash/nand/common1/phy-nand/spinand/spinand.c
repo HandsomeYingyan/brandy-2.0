@@ -101,6 +101,8 @@ void spinand_get_nand_info(struct _nand_info *aw_nand_info)
 
 	aw_nand_info->boot = phyinfo_buf;
 
+	if (aw_nand_info->boot->physic_block_reserved == 0)
+		aw_nand_info->boot->physic_block_reserved = PHYSIC_RECV_BLOCK;
 	/*get uboot physical domain into aw_nand_info */
 	set_uboot_start_and_end_block();
 	return;
@@ -134,7 +136,7 @@ struct _nand_info *spinand_hardware_init(void)
 	/*spinand_pr_version();*/
 
 	/*get boot info*/
-	nand_physic_info_read();
+	ret = nand_physic_info_read();
 
 	/*get nand_info*/
 	spinand_get_nand_info(&aw_nand_info);

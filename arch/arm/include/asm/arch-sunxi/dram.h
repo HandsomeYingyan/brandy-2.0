@@ -20,8 +20,12 @@
 		|| defined (CONFIG_MACH_SUN50IW9) \
 		|| defined (CONFIG_MACH_SUN8IW19) \
 		|| defined (CONFIG_MACH_SUN50IW10) \
+		|| defined (CONFIG_MACH_SUN50IW11) \
+		|| defined (CONFIG_MACH_SUN50IW12) \
 		|| defined (CONFIG_MACH_SUN8IW15) \
-		|| defined (CONFIG_MACH_SUN8IW7)
+		|| defined (CONFIG_MACH_SUN8IW7) \
+		|| defined (CONFIG_MACH_SUN20IW1) \
+		|| defined (CONFIG_MACH_SUN8IW20)
 
 #define  CONFIG_DRAM_VER_1
 

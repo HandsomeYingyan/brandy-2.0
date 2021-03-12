@@ -295,6 +295,13 @@ config SUN8I_EMAC
 	  It can be found in H3/A64/A83T based SoCs and compatible with both
 	  External and Internal PHYs.
 
+config SUNXI_GETH
+	bool "Allwinner SUNXI GMAC support"
+	select PHYLIB
+	default n
+	help
+	  This driver supports the Allwinner Gigabit Ethernet MAC.
+
 config SH_ETHER
 	bool "Renesas SH Ethernet MAC"
 	select PHYLIB

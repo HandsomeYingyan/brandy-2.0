@@ -31,6 +31,7 @@ typedef struct hal_fb_dev {
 	void *layer_config;
 	int dev_num;
 	int screen_id[DISP_DEV_NUM];
+	disp_device_t *disp_dev;
 } hal_fb_dev_t;
 
 static hal_fb_dev_t *get_fb_dev(unsigned int fb_id)
@@ -46,7 +47,6 @@ static hal_fb_dev_t *get_fb_dev(unsigned int fb_id)
 
 int hal_switch_device(disp_device_t *device, unsigned int fb_id)
 {
-	int disp_para0, disp_para1 = 0, disp_para2 = 0;
 	hal_fb_dev_t *fb_dev;
 	struct disp_device_config config;
 
@@ -56,9 +56,10 @@ int hal_switch_device(disp_device_t *device, unsigned int fb_id)
 	config.format = device->format;
 	config.eotf = device->eotf;
 	config.cs = device->cs;
+	config.dvi_hdmi = device->dvi_hdmi;
 
 	if (0 != _switch_device_config(device->screen_id, &config)) {
-		printf("switch device failed: sel=%d, type=%d, mode=%d, "
+		pr_msg("switch device failed: sel=%d, type=%d, mode=%d, "
 		       "format=%d, bits=%d, eotf=%d, cs=%d\n",
 		       device->screen_id, device->type, device->mode,
 		       device->format, device->bits, device->eotf, device->cs);
@@ -67,26 +68,19 @@ int hal_switch_device(disp_device_t *device, unsigned int fb_id)
 
 	device->opened = 1;
 
-	disp_para0 =
-	    (((device->type << 8) | device->mode) << (device->screen_id * 16));
 
-	disp_para1 =
-		((device->cs << 16) | (device->bits << 8) | device->format);
-	disp_para2 = (device->eotf);
-	hal_save_int_to_kernel("boot_disp", disp_para0);
-	hal_save_int_to_kernel("boot_disp1", disp_para1);
-	hal_save_int_to_kernel("boot_disp2", disp_para2);
-
-	printf("switch device: sel=%d, type=%d, mode=%d, format=%d, bits=%d, "
+	pr_msg("switch device: sel=%d, type=%d, mode=%d, format=%d, bits=%d, "
 	       "eotf=%d, cs=%d\n",
 	       device->screen_id, device->type, device->mode, device->format,
 	       device->bits, device->eotf, device->cs);
 
 	fb_dev = get_fb_dev(fb_id);
 	if (NULL == fb_dev) {
-		printf("this device can not be bounded to fb(%u)", fb_id);
+		pr_error("this device can not be bounded to fb(%u)", fb_id);
 		return -1;
 	}
+	fb_dev->disp_dev = device;
+
 
 	if (FB_SHOW_LAYER & fb_dev->state) {
 		_show_layer_on_dev(fb_dev->layer_config, device->screen_id, 1);
@@ -98,7 +92,7 @@ int hal_switch_device(disp_device_t *device, unsigned int fb_id)
 		fb_dev->screen_id[fb_dev->dev_num] = device->screen_id;
 		++(fb_dev->dev_num);
 	} else {
-		printf("ERR: %s the fb_dev->screen_id[] is overflowed\n",
+		pr_error("ERR: %s the fb_dev->screen_id[] is overflowed\n",
 		       __func__);
 	}
 
@@ -136,14 +130,14 @@ void *hal_request_layer(unsigned int fb_id)
 {
 	hal_fb_dev_t *fb_dev = get_fb_dev(fb_id);
 	if (NULL == fb_dev) {
-		printf("%s: get fb%u dev fail\n", __func__, fb_id);
+		pr_error("%s: get fb%u dev fail\n", __func__, fb_id);
 		return NULL;
 	}
 
 	fb_dev->state &= ~(FB_REQ_LAYER | FB_SHOW_LAYER);
 	fb_dev->layer_config = (void *)calloc(sizeof(private_data), 1);
 	if (NULL == fb_dev->layer_config) {
-		printf("%s: malloc for private_data failed.\n", __func__);
+		pr_error("%s: malloc for private_data failed.\n", __func__);
 		return NULL;
 	}
 	_simple_init_layer(fb_dev->layer_config);
@@ -157,7 +151,7 @@ int hal_release_layer(unsigned int fb_id, void *handle)
 	hal_fb_dev_t *fb_dev = (hal_fb_dev_t *)handle;
 
 	if ((NULL == fb_dev) || (fb_dev != get_fb_dev(fb_id))) {
-		printf("%s: fb_id=%u, handle=%p, get_fb_dev=%p\n", __func__,
+		pr_error("%s: fb_id=%u, handle=%p, get_fb_dev=%p\n", __func__,
 		       fb_id, handle, get_fb_dev(fb_id));
 		return -1;
 	}
@@ -243,13 +237,13 @@ int hal_set_layer_crop(void *handle, int left, int top, int right, int bottom)
 		    (right * scn_width % fb_width) ||
 		    (top * scn_height % fb_height) ||
 		    (bottom * scn_height % fb_height)) {
-			printf("not suport set layer crop[%d,%d,%d,%d], "
+			pr_error("not suport set layer crop[%d,%d,%d,%d], "
 			       "scn[%d,%d], fb[%d,%d]\n",
 			       left, top, right, bottom, scn_width, scn_height,
 			       fb_width, fb_height);
 			return -1;
 		}
-		printf("%s: crop[%d,%d,%d,%d], scn[%d,%d], fb[%d,%d]\n",
+		pr_msg("%s: crop[%d,%d,%d,%d], scn[%d,%d], fb[%d,%d]\n",
 		       __func__, left, top, right, bottom, scn_width,
 		       scn_height, fb_width, fb_height);
 	}
@@ -280,4 +274,22 @@ int hal_show_layer(void *handle, char is_show)
 		fb_dev->state &= ~FB_SHOW_LAYER;
 	}
 	return 0;
+}
+
+int hal_save_boot_disp(void *handle)
+{
+	int disp_para0, disp_para1 = 0, disp_para2 = 0;
+	hal_fb_dev_t *fb_dev = (hal_fb_dev_t *)handle;
+
+	disp_para0 = (((fb_dev->disp_dev->type << 8) | fb_dev->disp_dev->mode)
+		      << (fb_dev->disp_dev->screen_id * 16));
+
+	disp_para1 = ((fb_dev->disp_dev->cs << 16) |
+		      (fb_dev->disp_dev->bits << 8) | fb_dev->disp_dev->format);
+	disp_para2 = (fb_dev->disp_dev->eotf);
+
+	hal_save_int_to_kernel("boot_disp", disp_para0);
+	hal_save_int_to_kernel("boot_disp1", disp_para1);
+	hal_save_int_to_kernel("boot_disp2", disp_para2);
+	return  0;
 }

@@ -24,6 +24,7 @@
 #include "SFT.h"
 #include <linux/string.h>
 #include <malloc.h>
+#include <sys_partition.h>
 #undef  _4_char_to_int32
 #define _4_char_to_int32(a, b, c, d) ((a) << 24 | (b) << 16 | (c) << 8 | (d))
 

@@ -31,6 +31,11 @@ config SUNXI_AUTO_UPDATE
 	default n
 	help
 	  Enable support for sunxi auto update
+config SUNXI_DIGEST_TEST
+	bool "Sunxi digest test support"
+	default n
+	help
+	  Enable support for sunxi digest test
 choice
 	depends on SUNXI_AUTO_UPDATE
 	prompt "select update form sdcard or usb disk"
@@ -56,12 +61,6 @@ config SUNXI_PART_UPDATE
 	default n
 	help
 	  Enable support for sunxi auto update
-
-config SUNXI_NOT_BACKUP_GPT
-	bool "Sunxi not backup gpt"
-	default n
-	help
-	  do not backup gpt in the flash end
 
 endif
 

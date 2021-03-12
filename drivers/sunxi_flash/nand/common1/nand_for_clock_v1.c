@@ -2,7 +2,6 @@
 
 #include "nand_for_clock.h"
 
-#define NAND_CLK_BASE_ADDR (0x03001000)
 #define PLL_PERIPHO_CTRL_REG (0x20)
 #define NAND0_0_CLK_REG (0x0810)
 #define NAND0_1_CLK_REG (0x0814)
@@ -10,7 +9,8 @@
 #define MBUS_MASTER_CLK_GATING_REG (0x0804)
 #define SPI0_CLK_REG (0x0940)
 #define SPI_BUS_GATING_REG (0x096C)
-#define NAND_PIO_BASE_ADDR (0x0300B000)
+
+#define PRCM_PLL_PERI_CTRL_REG (0x1010)
 
 /*function pin select*/
 #define Pn_CFG0(n) ((n) * (0x24) + 0x00)
@@ -23,16 +23,34 @@
 /*pull-up/down select*/
 #define Pn_PUL1(n) ((n) * (0x24) + 0x20)
 
-
 __u32 _get_pll6_clk_v1(void)
 {
+#ifdef CONFIG_MACH_SUN50IW11
+	__u32 reg_val;
+	__u32 factor_n;
+	__u32 factor_m;
+	__u32 factor_p0;
+	__u32 clock;
+
+	reg_val   = get_wvalue(SUNXI_PRCM_BASE + PRCM_PLL_PERI_CTRL_REG);
+	factor_p0 = ((reg_val >> 16) & 0x3) + 1;
+	factor_n  = ((reg_val >> 8) & 0xFF) + 1;
+	factor_m = ((reg_val >> 1) & 0x1) + 1;
+
+	clock = 24000000 * factor_n / factor_m / factor_p0 / 2;
+	/*NAND_Print("pll6 clock is %d Hz\n", clock);*/
+	/* if(clock != 600000000) */
+	/* printf("pll6 clock rate error, %d!!!!!!!\n", clock); */
+
+	return clock;
+#else
 	__u32 reg_val;
 	__u32 factor_n;
 	__u32 factor_m0;
 	__u32 factor_m1;
 	__u32 clock;
 
-	reg_val   = get_wvalue(NAND_CLK_BASE_ADDR + PLL_PERIPHO_CTRL_REG);
+	reg_val   = get_wvalue(SUNXI_CCM_BASE + PLL_PERIPHO_CTRL_REG);
 	factor_n  = ((reg_val >> 8) & 0xFF) + 1;
 	factor_m0 = ((reg_val >> 0) & 0x1) + 1;
 	factor_m1 = ((reg_val >> 1) & 0x1) + 1;
@@ -44,6 +62,7 @@ __u32 _get_pll6_clk_v1(void)
 	/* printf("pll6 clock rate error, %d!!!!!!!\n", clock); */
 
 	return clock;
+#endif
 }
 
 __s32 _get_ndfc_clk_v1(__u32 nand_index, __u32 *pdclk, __u32 *pcclk)
@@ -54,9 +73,9 @@ __s32 _get_ndfc_clk_v1(__u32 nand_index, __u32 *pdclk, __u32 *pcclk)
 	__u32 reg_val, sclk0, sclk1;
 
 	if (nand_index == 0) {
-		sclk0_reg_adr = (NAND_CLK_BASE_ADDR +
+		sclk0_reg_adr = (SUNXI_CCM_BASE +
 				NAND0_0_CLK_REG); /* CCM_NAND0_CLK0_REG; */
-		sclk1_reg_adr = (NAND_CLK_BASE_ADDR +
+		sclk1_reg_adr = (SUNXI_CCM_BASE +
 				NAND0_1_CLK_REG); /* CCM_NAND0_CLK1_REG; */
 	} else {
 		printf("_get_ndfc_clk_v1 error, wrong nand index: %d\n",
@@ -84,7 +103,7 @@ __s32 _get_ndfc_clk_v1(__u32 nand_index, __u32 *pdclk, __u32 *pcclk)
 	reg_val		 = get_wvalue(sclk1_reg_adr);
 	sclk_src_sel     = (reg_val >> 24) & 0x7;
 	sclk_pre_ratio_n = (reg_val >> 8) & 0x3;
-	;
+
 	sclk_ratio_m = (reg_val)&0xf;
 
 	if (sclk_src_sel == 0)
@@ -96,8 +115,8 @@ __s32 _get_ndfc_clk_v1(__u32 nand_index, __u32 *pdclk, __u32 *pcclk)
 	sclk1		 = (sclk_src >> sclk_pre_ratio_n) / (sclk_ratio_m + 1);
 
 	if (nand_index == 0) {
-		/* printf("Reg 0x03001000 + 0x0810: 0x%x\n", *(volatile __u32 *)(NAND_CLK_BASE_ADDR + 0x0810)); */
-		/* printf("Reg 0x03001000 + 0x0814: 0x%x\n", *(volatile __u32 *)(NAND_CLK_BASE_ADDR + 0x0814)); */
+		/* printf("Reg 0x03001000 + 0x0810: 0x%x\n", *(volatile __u32 *)(SUNXI_CCM_BASE + 0x0810)); */
+		/* printf("Reg 0x03001000 + 0x0814: 0x%x\n", *(volatile __u32 *)(SUNXI_CCM_BASE + 0x0814)); */
 	} else {
 		/* printf("Reg 0x06000408: 0x%x\n", *(volatile __u32 *)(0x06000400)); */
 		/* printf("Reg 0x0600040C: 0x%x\n", *(volatile __u32 *)(0x06000404)); */
@@ -121,9 +140,9 @@ __s32 _change_ndfc_clk_v1(__u32 nand_index, __u32 dclk_src_sel, __u32 dclk,
 	u32 sclk0_reg_adr, sclk1_reg_adr;
 
 	if (nand_index == 0) {
-		sclk0_reg_adr = (NAND_CLK_BASE_ADDR +
+		sclk0_reg_adr = (SUNXI_CCM_BASE +
 				NAND0_0_CLK_REG); /* CCM_NAND0_CLK0_REG; */
-		sclk1_reg_adr = (NAND_CLK_BASE_ADDR +
+		sclk1_reg_adr = (SUNXI_CCM_BASE +
 				NAND0_1_CLK_REG); /* CCM_NAND0_CLK1_REG; */
 	} else {
 		printf("_change_ndfc_clk_v1 error, wrong nand index: %d\n",
@@ -266,9 +285,9 @@ __s32 _change_ndfc_clk_v1(__u32 nand_index, __u32 dclk_src_sel, __u32 dclk,
 		 *	"T=%d\n",sclk1_src/sclk1_ratio_m/sclk1_pre_ratio_n,
 			sclk1_src, sclk1_pre_ratio_n, sclk1_ratio_m, cclk); */
 		/* printf("Reg 0x03001000 + 0x0810: 0x%x\n",
-		 *	*(volatile __u32 *)(NAND_CLK_BASE_ADDR + 0x0810)); */
+		 *	*(volatile __u32 *)(SUNXI_CCM_BASE + 0x0810)); */
 		/* printf("Reg 0x03001000 + 0x0814: 0x%x\n",
-		 *	*(volatile __u32 *)(NAND_CLK_BASE_ADDR + 0x0814)); */
+		 *	*(volatile __u32 *)(SUNXI_CCM_BASE + 0x0814)); */
 	} else {
 		/* printf("Reg 0x06000408: 0x%x\n",
 		 *	*(volatile __u32 *)(0x06000400)); */
@@ -286,9 +305,9 @@ __s32 _close_ndfc_clk_v1(__u32 nand_index)
 
 	if (nand_index == 0) {
 		/* disable nand sclock gating */
-		sclk0_reg_adr = (NAND_CLK_BASE_ADDR +
+		sclk0_reg_adr = (SUNXI_CCM_BASE +
 				NAND0_0_CLK_REG); /* CCM_NAND0_CLK0_REG; */
-		sclk1_reg_adr = (NAND_CLK_BASE_ADDR +
+		sclk1_reg_adr = (SUNXI_CCM_BASE +
 				NAND0_1_CLK_REG); /* CCM_NAND0_CLK1_REG; */
 
 		reg_val = get_wvalue(sclk0_reg_adr);
@@ -316,22 +335,22 @@ __s32 _open_ndfc_ahb_gate_and_reset_v1(__u32 nand_index)
 	   */
 	if (nand_index == 0) {
 		/* reset */
-		reg_val = get_wvalue(NAND_CLK_BASE_ADDR + NAND_BUS_GATING_REG);
+		reg_val = get_wvalue(SUNXI_CCM_BASE + NAND_BUS_GATING_REG);
 		reg_val &= (~(0x1U << 16));
 		reg_val |= (0x1U << 16);
-		put_wvalue((NAND_CLK_BASE_ADDR + NAND_BUS_GATING_REG), reg_val);
+		put_wvalue((SUNXI_CCM_BASE + NAND_BUS_GATING_REG), reg_val);
 		/* ahb clock gate */
-		reg_val = get_wvalue(NAND_CLK_BASE_ADDR + NAND_BUS_GATING_REG);
+		reg_val = get_wvalue(SUNXI_CCM_BASE + NAND_BUS_GATING_REG);
 		reg_val &= (~(0x1U << 0));
 		reg_val |= (0x1U << 0);
-		put_wvalue((NAND_CLK_BASE_ADDR + NAND_BUS_GATING_REG), reg_val);
+		put_wvalue((SUNXI_CCM_BASE + NAND_BUS_GATING_REG), reg_val);
 
 		/* enable nand mbus gate */
-		reg_val = get_wvalue(NAND_CLK_BASE_ADDR +
+		reg_val = get_wvalue(SUNXI_CCM_BASE +
 				MBUS_MASTER_CLK_GATING_REG);
 		reg_val &= (~(0x1U << 5));
 		reg_val |= (0x1U << 5);
-		put_wvalue((NAND_CLK_BASE_ADDR + MBUS_MASTER_CLK_GATING_REG),
+		put_wvalue((SUNXI_CCM_BASE + MBUS_MASTER_CLK_GATING_REG),
 				reg_val);
 	} else {
 		printf("open ahb gate and reset, wrong nand index: %d\n",
@@ -351,19 +370,19 @@ __s32 _close_ndfc_ahb_gate_and_reset_v1(__u32 nand_index)
 	   */
 	if (nand_index == 0) {
 		/* reset */
-		reg_val = get_wvalue(NAND_CLK_BASE_ADDR + NAND_BUS_GATING_REG);
+		reg_val = get_wvalue(SUNXI_CCM_BASE + NAND_BUS_GATING_REG);
 		reg_val &= (~(0x1U << 16));
-		put_wvalue((NAND_CLK_BASE_ADDR + NAND_BUS_GATING_REG), reg_val);
+		put_wvalue((SUNXI_CCM_BASE + NAND_BUS_GATING_REG), reg_val);
 		/* ahb clock gate */
-		reg_val = get_wvalue(NAND_CLK_BASE_ADDR + NAND_BUS_GATING_REG);
+		reg_val = get_wvalue(SUNXI_CCM_BASE + NAND_BUS_GATING_REG);
 		reg_val &= (~(0x1U << 0));
-		put_wvalue((NAND_CLK_BASE_ADDR + NAND_BUS_GATING_REG), reg_val);
+		put_wvalue((SUNXI_CCM_BASE + NAND_BUS_GATING_REG), reg_val);
 
 		/* disable nand mbus gate */
-		reg_val = get_wvalue(NAND_CLK_BASE_ADDR +
+		reg_val = get_wvalue(SUNXI_CCM_BASE +
 				MBUS_MASTER_CLK_GATING_REG);
 		reg_val &= (~(0x1U << 5));
-		put_wvalue((NAND_CLK_BASE_ADDR + MBUS_MASTER_CLK_GATING_REG),
+		put_wvalue((SUNXI_CCM_BASE + MBUS_MASTER_CLK_GATING_REG),
 				reg_val);
 
 	} else {
@@ -379,24 +398,24 @@ __s32 _cfg_ndfc_gpio_v1(__u32 nand_index)
 	__u32 cfg;
 	if (nand_index == 0) {
 		/* setting PC0 port as Nand control line */
-		*(volatile __u32 *)(NAND_PIO_BASE_ADDR + Pn_CFG0(2)) =
+		*(volatile __u32 *)(SUNXI_PIO_BASE + Pn_CFG0(2)) =
 			0x22222222;
 		/* setting PC1 port as Nand data line */
-		*(volatile __u32 *)(NAND_PIO_BASE_ADDR + Pn_CFG1(2)) =
+		*(volatile __u32 *)(SUNXI_PIO_BASE + Pn_CFG1(2)) =
 			0x22222222;
 		/* setting PC2 port as Nand RB1 */
-		cfg = *(volatile __u32 *)(NAND_PIO_BASE_ADDR + Pn_CFG2(2));
+		cfg = *(volatile __u32 *)(SUNXI_PIO_BASE + Pn_CFG2(2));
 		cfg &= (~0x7);
 		cfg |= 0x2;
-		*(volatile __u32 *)(NAND_PIO_BASE_ADDR + Pn_CFG2(2)) = cfg;
+		*(volatile __u32 *)(SUNXI_PIO_BASE + Pn_CFG2(2)) = cfg;
 
 		/* pull-up/down --only setting RB & CE pin pull-up */
-		*(volatile __u32 *)(NAND_PIO_BASE_ADDR + Pn_PUL0(2)) =
+		*(volatile __u32 *)(SUNXI_PIO_BASE + Pn_PUL0(2)) =
 			0x40000440;
-		cfg = *(volatile __u32 *)(NAND_PIO_BASE_ADDR + Pn_PUL1(2));
+		cfg = *(volatile __u32 *)(SUNXI_PIO_BASE + Pn_PUL1(2));
 		cfg &= (~0x3);
 		cfg |= 0x01;
-		*(volatile __u32 *)(NAND_PIO_BASE_ADDR + Pn_PUL1(2)) = cfg;
+		*(volatile __u32 *)(SUNXI_PIO_BASE + Pn_PUL1(2)) = cfg;
 
 	} else {
 		printf("_cfg_ndfc_gpio_v1, wrong nand index %d\n", nand_index);
@@ -415,7 +434,7 @@ __s32 _get_spic_clk_v1(__u32 spinand_index, __u32 *pdclk)
 
 	if (spinand_index == 0) {
 		/* CCM_SPI0_CLK_REG */
-		sclk0_reg_adr = (NAND_CLK_BASE_ADDR + SPI0_CLK_REG);
+		sclk0_reg_adr = (SUNXI_CCM_BASE + SPI0_CLK_REG);
 	} else {
 		printf("_get_spic_clk_v1 error, wrong spinand index: %d\n",
 				spinand_index);
@@ -451,7 +470,7 @@ __s32 _change_spic_clk_v1(__u32 spinand_index, __u32 dclk_src_sel, __u32 dclk)
 
 	if (spinand_index == 0) {
 		/* CCM_SPI0_CLK_REG */
-		sclk0_reg_adr = (NAND_CLK_BASE_ADDR + SPI0_CLK_REG);
+		sclk0_reg_adr = (SUNXI_CCM_BASE + SPI0_CLK_REG);
 	} else {
 		printf("_change_spic_clk_v1 error, wrong spinand index: %d\n",
 				spinand_index);
@@ -525,7 +544,7 @@ __s32 _change_spic_clk_v1(__u32 spinand_index, __u32 dclk_src_sel, __u32 dclk)
 	if (spinand_index == 0)
 		printf("sclk0_reg_adr: 0x%x, src clock: 0x%x\n",
 			*(volatile __u32 *)(sclk0_reg_adr),
-			get_wvalue(NAND_CLK_BASE_ADDR + PLL_PERIPHO_CTRL_REG));
+			get_wvalue(SUNXI_CCM_BASE + PLL_PERIPHO_CTRL_REG));
 
 	return 0;
 }
@@ -537,7 +556,7 @@ __s32 _close_spic_clk_v1(__u32 spinand_index)
 
 	if (spinand_index == 0) {
 		/*disable nand sclock gating*/
-		sclk0_reg_adr = (NAND_CLK_BASE_ADDR + SPI0_CLK_REG);
+		sclk0_reg_adr = (SUNXI_CCM_BASE + SPI0_CLK_REG);
 
 		reg_val = get_wvalue(sclk0_reg_adr);
 		reg_val &= (~(0x1U << 31));
@@ -561,15 +580,15 @@ __s32 _open_spic_ahb_gate_and_reset_v1(__u32 spinand_index)
 	   */
 	if (spinand_index == 0) {
 		/* reset */
-		reg_val = get_wvalue(NAND_CLK_BASE_ADDR + SPI_BUS_GATING_REG);
+		reg_val = get_wvalue(SUNXI_CCM_BASE + SPI_BUS_GATING_REG);
 		reg_val &= (~(0x1U << 16));
 		reg_val |= (0x1U << 16);
-		put_wvalue((NAND_CLK_BASE_ADDR + SPI_BUS_GATING_REG), reg_val);
+		put_wvalue((SUNXI_CCM_BASE + SPI_BUS_GATING_REG), reg_val);
 		/* ahb clock gate */
-		reg_val = get_wvalue(NAND_CLK_BASE_ADDR + SPI_BUS_GATING_REG);
+		reg_val = get_wvalue(SUNXI_CCM_BASE + SPI_BUS_GATING_REG);
 		reg_val &= (~(0x1U << 0));
 		reg_val |= (0x1U << 0);
-		put_wvalue((NAND_CLK_BASE_ADDR + SPI_BUS_GATING_REG), reg_val);
+		put_wvalue((SUNXI_CCM_BASE + SPI_BUS_GATING_REG), reg_val);
 
 	} else {
 		printf("open ahb gate and reset, wrong spinand index: %d\n",
@@ -589,13 +608,13 @@ __s32 _close_spic_ahb_gate_and_reset_v1(__u32 spinand_index)
 	   */
 	if (spinand_index == 0) {
 		/* reset */
-		reg_val = get_wvalue(NAND_CLK_BASE_ADDR + SPI_BUS_GATING_REG);
+		reg_val = get_wvalue(SUNXI_CCM_BASE + SPI_BUS_GATING_REG);
 		reg_val &= (~(0x1U << 16));
-		put_wvalue((NAND_CLK_BASE_ADDR + SPI_BUS_GATING_REG), reg_val);
+		put_wvalue((SUNXI_CCM_BASE + SPI_BUS_GATING_REG), reg_val);
 		/* ahb clock gate */
-		reg_val = get_wvalue(NAND_CLK_BASE_ADDR + SPI_BUS_GATING_REG);
+		reg_val = get_wvalue(SUNXI_CCM_BASE + SPI_BUS_GATING_REG);
 		reg_val &= (~(0x1U << 0));
-		put_wvalue((NAND_CLK_BASE_ADDR + SPI_BUS_GATING_REG), reg_val);
+		put_wvalue((SUNXI_CCM_BASE + SPI_BUS_GATING_REG), reg_val);
 
 	} else {
 		printf("close ahb gate and reset, wrong spinand index: %d\n",

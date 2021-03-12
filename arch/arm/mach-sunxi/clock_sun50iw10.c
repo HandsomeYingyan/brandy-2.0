@@ -24,13 +24,20 @@ void clock_init_uart(void)
 	       APB2_CLK_RATE_M(1),
 	       &ccm->apb2_cfg);
 
+	clrbits_le32(&ccm->uart_gate_reset,
+		     1 << (CONFIG_CONS_INDEX - 1));
+	udelay(2);
+
+	clrbits_le32(&ccm->uart_gate_reset,
+		     1 << (RESET_SHIFT + CONFIG_CONS_INDEX - 1));
+	udelay(2);
+	/* deassert uart reset */
+	setbits_le32(&ccm->uart_gate_reset,
+		     1 << (RESET_SHIFT + CONFIG_CONS_INDEX - 1));
 	/* open the clock for uart */
 	setbits_le32(&ccm->uart_gate_reset,
 		     1 << (CONFIG_CONS_INDEX - 1));
 
-	/* deassert uart reset */
-	setbits_le32(&ccm->uart_gate_reset,
-		     1 << (RESET_SHIFT + CONFIG_CONS_INDEX - 1));
 }
 
 
@@ -252,35 +259,43 @@ uint clock_get_mbus(void)
 
 int usb_open_clock(void)
 {
-	u32 reg_value = 0;
+	//disable otg clk gating and reset
+	clrbits_le32(SUNXI_CCM_BASE + 0xA8C,
+		     (0x01 << 5) | (0x01 << 8) | (0x01 << 21) | (0x1 << 24));
+	udelay(50);
+
+	//disable phy clk gating and reset
+	clrbits_le32(SUNXI_CCM_BASE + 0xA70, (0x01 << 29)|(0x1 << 30));
+	udelay(50);
+
+	setbits_le32(SUNXI_CCM_BASE + 0xA8C, (0x01 << 24) | (0x01 << 21));
+	udelay(50);
+
+	//enable otg clk gating
+	setbits_le32(SUNXI_CCM_BASE + 0xA8C, (0x01 << 8) | (0x01 << 5));
+	udelay(50);
 
 	//USB0 Clock Reg
 	//bit30: USB PHY0 reset
 	//Bit29: Gating Special Clk for USB PHY0
-	reg_value = readl(SUNXI_CCM_BASE + 0xA70);
-	reg_value |= (1 << 29) | (1 << 30);
-	writel(reg_value, (SUNXI_CCM_BASE + 0xA70));
-	//delay some time
-	__msdelay(1);
+	setbits_le32(SUNXI_CCM_BASE + 0xA70, (0x01 << 29));
+	udelay(50);
 
-	//USB BUS Gating Reset Reg
-	//bit8:USB_OTG Gating
-	reg_value = readl(SUNXI_CCM_BASE + 0xA8C);
-	reg_value |= (1 << 8);
-	writel(reg_value, (SUNXI_CCM_BASE + 0xA8C));
+	setbits_le32(SUNXI_CCM_BASE + 0xA70, (0x01 << 30));
 
-	//delay to wati SIE stable
-	__msdelay(1);
+	//USB1 Clock Reg
+	//bit30: USB PHY1 reset
+	//Bit29: Gating Special Clk for USB PHY1
+	setbits_le32(SUNXI_CCM_BASE + 0xA74, (0x01 << 29));
+	udelay(50);
 
-	//USB BUS Gating Reset Reg: USB_OTG reset
-	reg_value = readl(SUNXI_CCM_BASE + 0xA8C);
-	reg_value |= (1 << 24);
-	writel(reg_value, (SUNXI_CCM_BASE + 0xA8C));
-	__msdelay(1);
+	setbits_le32(SUNXI_CCM_BASE + 0xA74, (0x01 << 30));
+	udelay(50);
 
-	reg_value = readl(SUNXI_USBOTG_BASE + 0x420);
-	reg_value |= (0x01 << 0);
-	writel(reg_value, (SUNXI_USBOTG_BASE + 0x420));
+	clrbits_le32(SUNXI_EHCI1_BASE + 0x810, (0x01 << 3));
+
+	setbits_le32(SUNXI_USBOTG_BASE + 0x420, (0x01 << 0));
+
 	__msdelay(1);
 
 	return 0;
@@ -288,22 +303,17 @@ int usb_open_clock(void)
 
 int usb_close_clock(void)
 {
-	u32 reg_value = 0;
-
 	/* AHB reset */
-	reg_value = readl(SUNXI_CCM_BASE + 0xA8C);
-	reg_value &= ~(1 << 24);
-	writel(reg_value, (SUNXI_CCM_BASE + 0xA8C));
+	clrbits_le32(SUNXI_CCM_BASE + 0xA8C, (0x01 << 24) | (0x01 << 21));
 	__msdelay(1);
 
-	reg_value = readl(SUNXI_CCM_BASE + 0xA8C);
-	reg_value &= ~(1 << 8);
-	writel(reg_value, (SUNXI_CCM_BASE + 0xA8C));
+	clrbits_le32(SUNXI_CCM_BASE + 0xA8C, (0x01 << 8) | (0x01 << 5));
 	__msdelay(1);
 
-	reg_value = readl(SUNXI_CCM_BASE + 0xcc);
-	reg_value &= ~((1 << 29) | (1 << 30));
-	writel(reg_value, (SUNXI_CCM_BASE + 0xcc));
+	clrbits_le32(SUNXI_CCM_BASE + 0xA70, (1 << 29) | (1 << 30));
+	__msdelay(1);
+
+	clrbits_le32(SUNXI_CCM_BASE + 0xA74, (1 << 29) | (1 << 30));
 	__msdelay(1);
 
 	return 0;

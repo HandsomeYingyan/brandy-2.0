@@ -32,6 +32,35 @@ s32 disp_device_set_manager(struct disp_device* dispdev, struct disp_manager *mg
 	return DIS_SUCCESS;
 }
 
+s32 disp_device_swap_manager(struct disp_device *dispdev1, struct disp_device *dispdev2)
+{
+struct disp_manager *mgr;
+	if ((NULL == dispdev1) || (NULL == dispdev2)) {
+		DE_WRN("NULL hdl!\n");
+		return DIS_FAIL;
+	}
+	DE_INF("device %p, %p swap manager\n", dispdev1, dispdev2);
+	if ((NULL == dispdev1) && (NULL == dispdev2)) {
+		return DIS_SUCCESS;
+	} else if (dispdev1->manager == NULL) {
+		dispdev1->manager = dispdev2->manager;
+		dispdev2->manager->device = dispdev1;
+		dispdev2->manager = NULL;
+	} else if (dispdev2->manager == NULL) {
+		dispdev2->manager = dispdev1->manager;
+		dispdev1->manager->device = dispdev2;
+		dispdev1->manager = NULL;
+	} else {
+		mgr = dispdev1->manager;
+		dispdev1->manager = dispdev2->manager;
+		dispdev2->manager = mgr;
+		dispdev1->manager->device = dispdev1;
+		dispdev2->manager->device = dispdev2;
+
+	}
+	return DIS_SUCCESS;
+}
+
 s32 disp_device_unset_manager(struct disp_device* dispdev)
 {
 	if ((NULL == dispdev)) {

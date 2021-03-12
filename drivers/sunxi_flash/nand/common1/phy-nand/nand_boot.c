@@ -615,9 +615,6 @@ int set_uboot_start_and_end_block(void)
 		aw_nand_info.boot->uboot_next_block = uboot_next_block;
 	}
 
-	if (aw_nand_info.boot->physic_block_reserved == 0)
-		aw_nand_info.boot->physic_block_reserved = PHYSIC_RECV_BLOCK;
-
 	return 0;
 }
 
@@ -1083,9 +1080,6 @@ int nand_physic_info_read(void)
 		memset((char *)phyinfo_buf, 0, PHY_INFO_SIZE);
 		phyinfo_buf->len = PHY_INFO_SIZE;
 		phyinfo_buf->magic = PHY_INFO_MAGIC;
-		/*
-		Exception case, running without crc check
-		*/
 		RAWNAND_ERR("can't find uboot head\n");
 		flag = 1;
 		return ret;
@@ -1129,6 +1123,7 @@ int nand_physic_info_read(void)
 			flag = 1;
 		}
 	}
+
 
 	NAND_Free(temp_buf, size_per_page);
 
@@ -1252,24 +1247,4 @@ unsigned int is_uboot_block(unsigned int block, char *uboot_buf)
 	}
 }
 
-/*
-enable crc check for winbond power down fail issue
-calc crc when nftl write.
-check crc when nftl build PA->LA mapping table
-*/
-int is_physic_info_enable_crc(void)
-{
-	return (phyinfo_buf->enable_crc == ENABLE_CRC_MAGIC);
-}
 
-int mark_to_disable_crc_when_ota(void)
-{
-	disable_crc_when_ota = 1;
-	return 0;
-}
-
-int disable_phyinfo_crc_in_buffer(struct _boot_info *phyinfo_buf_tmp)
-{
-	phyinfo_buf_tmp->enable_crc = 0;
-	return 0;
-}

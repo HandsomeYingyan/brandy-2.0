@@ -44,6 +44,6 @@ endif
 config SUNXI_USB_DETECT
 	bool "Support sunxi usb detect"
 	help
-	  Enable support for sunxi usb detect.
+		Enable support for sunxi usb detect.
 
 endif

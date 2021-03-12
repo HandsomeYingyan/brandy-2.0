@@ -31,11 +31,12 @@
 #include <spare_head.h>
 #include <sunxi_board.h>
 #include "nand_for_clock.h"
+#include <fdtdec.h>
 
 //#include <sys_config_old.h>
 DECLARE_GLOBAL_DATA_PTR;
 
-#define SPIC0_BASE                      0x05010000
+#define SPIC0_BASE                      SUNXI_SPI0_BASE
 #define SPI_TX_IO_DATA                  (SPIC0_BASE + 0x200)
 #define SPI_RX_IO_DATA                  (SPIC0_BASE + 0x300)
 
@@ -47,10 +48,15 @@ DECLARE_GLOBAL_DATA_PTR;
 
 #else
 #define  NAND_DRV_VERSION_0		0x03
-#define  NAND_DRV_VERSION_1		0x6066
-#define  NAND_DRV_DATE			0x20190725
+#define  NAND_DRV_VERSION_1		0x6079
+#define  NAND_DRV_DATE			0x20200901
 #define  NAND_DRV_TIME			0x18212019
 #endif
+
+/*nand common1 version rule vx.ab date time
+ * x >= 1 ; 00 <= ab <= 99;*/
+#define NAND_COMMON1_DRV_VERSION "v1.17 2020-12-29 14:35"
+
 /*
  *1755--AW1755--A50
  *14--uboot2014
@@ -66,12 +72,9 @@ DECLARE_GLOBAL_DATA_PTR;
 #define PL_DAT_REG		(0x01f02c10)
 
 #else
-#define NDFC0_BASE_ADDR                 (0x04011000)
+#define NDFC0_BASE_ADDR                 (SUNXI_NFC_BASE)
 #define NDFC1_BASE_ADDR                 (NULL)
-
 #endif
-#define NAND_CLK_BASE_ADDR              (0x03001000)
-#define NAND_PIO_BASE_ADDR              (0x0300B000)
 #define NAND_PIO_WITHSTAND_VOL_MODE	(0x0340)
 
 #define NAND_STORAGE_TYPE_NULL (0)
@@ -113,7 +116,98 @@ void NAND_Free(void *pAddr, unsigned int Size);
 int NAND_Get_Version(void);
 //static __u32 boot_mode;
 /* static __u32 gpio_hdl; */
-static int nand_nodeoffset;
+/*static int nand_nodeoffset;*/
+static int fdt_node;
+
+static int nand_fdt_get_path_offset(const char *path)
+{
+	static char *s_path = "none";
+	int fdt_node_tmp;
+
+	if ((strlen(path) != strlen(s_path)) || memcmp((char *)s_path, (char *)path, strlen(path))) {
+		fdt_node_tmp = fdt_path_offset(working_fdt, path);
+		if (fdt_node_tmp < 0) {
+			/* printf("get %s err\n", path); */
+			return fdt_node_tmp;
+		}
+		fdt_node = fdt_node_tmp;
+		s_path = (char *)path;
+	}
+	return fdt_node;
+}
+
+u32 nand_fdt_get_uint(const char *path, const char *prop_name)
+{
+
+	unsigned int val = 0;
+	int node;
+
+	node = nand_fdt_get_path_offset(path);
+	if (node < 0)
+		return 0;
+
+	val = fdtdec_get_uint(working_fdt, node,
+			prop_name, 0);
+	return val;
+
+}
+
+int nand_fdt_get_int(const char *path, const char *prop_name)
+{
+
+	int val = 0;
+	int node;
+
+	node = nand_fdt_get_path_offset(path);
+	if (node < 0)
+		return 0;
+
+	val = fdtdec_get_int(working_fdt, node,
+			prop_name, 0);
+	return val;
+
+}
+
+
+const char *nand_fdt_get_string(const char *path, const char *prop_name)
+{
+	int node;
+	const char *str = NULL;
+
+	node = nand_fdt_get_path_offset(path);
+
+	if (node < 0)
+		return NULL;
+
+
+	str = fdt_getprop(working_fdt, node, prop_name, NULL);
+	if (str == NULL) {
+		return NULL;
+	}
+
+	return str;
+}
+
+u32 nand_fdt_get_addr(const char *path, const char *prop_name)
+{
+	struct fdt_resource res;
+	int node;
+	int index = 0;
+	int ret = 0;
+
+	node = nand_fdt_get_path_offset(path);
+	if (node < 0)
+		return 0;
+
+
+	ret = fdt_get_resource(working_fdt, node, prop_name, index, &res);
+	if (ret < 0) {
+		printf("get resource err\n");
+		return 0;
+	}
+
+	return res.start;
+}
 
 __u32 get_storage_type(void)
 {
@@ -156,19 +250,16 @@ int NAND_Print(const char *str, ...)
 int NAND_Print_DBG(const char *str, ...)
 {
 	int ret;
-	if (boot_mode)
-		return 0;
-	else {
-		static char _buf[1024];
-		va_list args;
 
-		va_start(args, str);
-		vsprintf(_buf, str, args);
+	static char _buf[1024];
+	va_list args;
 
-		ret = tick_printf(_buf);
-		va_end(args);
-		return ret;
-	}
+	va_start(args, str);
+	vsprintf(_buf, str, args);
+
+	ret = pr_debug(_buf);
+	va_end(args);
+	return ret;
 }
 
 __s32 NAND_CleanFlushDCacheRegion(void *buff_addr, __u32 len)
@@ -228,8 +319,9 @@ __s32 NAND_PIORequest(__u32 nand_index)
 {
 
 	if (get_storage_type() == 1) {
-		nand_nodeoffset =  fdt_path_offset(working_fdt, "nand0");
-		if (nand_nodeoffset < 0) {
+		fdt_node = nand_fdt_get_path_offset("/soc/nand0");
+		/*fdt_node =  fdt_path_offset(working_fdt, "nand0");*/
+		if (fdt_node < 0) {
 			NAND_Print("nand0: get node offset error\n");
 			return -1;
 		}
@@ -238,8 +330,9 @@ __s32 NAND_PIORequest(__u32 nand_index)
 			return -1;
 		}
 	} else if (get_storage_type() == 2) {
-		nand_nodeoffset =  fdt_path_offset(working_fdt, "spi0");
-		if (nand_nodeoffset < 0) {
+		/*fdt_node =  fdt_path_offset(working_fdt, "spi0");*/
+		fdt_node = nand_fdt_get_path_offset("spi0");
+		if (fdt_node < 0) {
 			printf("spi0: get node offset error\n");
 			return -1;
 		}
@@ -256,11 +349,9 @@ __s32 NAND_3DNand_Request(void)
 {
 	u32 cfg;
 
-	/* printf("[ZZM-DB]Reg 0x0300B340: 0x%08x\n", *(volatile __u32 *)(NAND_PIO_BASE_ADDR + 0x340)); */
-	cfg = *(volatile __u32 *)(NAND_PIO_BASE_ADDR + 0x340);
+	cfg = *(volatile __u32 *)(SUNXI_PIO_BASE + NAND_PIO_WITHSTAND_VOL_MODE);
 	cfg ^= 0x4;
-	*(volatile __u32 *)(NAND_PIO_BASE_ADDR + 0x340) = cfg;
-	/* printf("[ZZM-DB]Reg 0x0300B340: 0x%08x\n", *(volatile __u32 *)(NAND_PIO_BASE_ADDR + 0x340)); */
+	*(volatile __u32 *)(SUNXI_PIO_BASE + NAND_PIO_WITHSTAND_VOL_MODE) = cfg;
 	if ((cfg >> 2) == 1)
 		printf("Change PC_Power Mode Select to 1.8V\n");
 	else
@@ -273,10 +364,10 @@ __s32 NAND_Check_3DNand(void)
 {
 	u32 cfg;
 
-	cfg = *(volatile __u32 *)(NAND_PIO_BASE_ADDR + 0x340);
+	cfg = *(volatile __u32 *)(SUNXI_PIO_BASE + NAND_PIO_WITHSTAND_VOL_MODE);
 	if ((cfg >> 2) == 0) {
 		cfg |= 0x4;
-		*(volatile __u32 *)(NAND_PIO_BASE_ADDR + 0x340) = cfg;
+		*(volatile __u32 *)(SUNXI_PIO_BASE + NAND_PIO_WITHSTAND_VOL_MODE) = cfg;
 		printf("Change PC_Power Mode Select to 1.8V\n");
 	}
 
@@ -344,6 +435,16 @@ void NAND_PIORelease(__u32 nand_index)
 	return;
 }
 
+void NAND_Bug(void)
+{
+	BUG();
+}
+
+void NAND_Mdelay(unsigned long ms)
+{
+	mdelay(ms);
+}
+
 void NAND_Memset(void *pAddr, unsigned char value, unsigned int len)
 {
 	memset(pAddr, value, len);
@@ -354,10 +455,16 @@ void NAND_Memcpy(void *pAddr_dst, void *pAddr_src, unsigned int len)
 	memcpy(pAddr_dst, pAddr_src, len);
 }
 
+int NAND_Memcmp(void *pAddr_dst, void *pAddr_src, unsigned int len)
+{
+	return memcmp(pAddr_dst, pAddr_src, len);
+}
+
 int NAND_Strcmp(const char *s1, const char *s2)
 {
 	return strcmp(s1, s2);
 }
+
 
 void *NAND_Malloc(unsigned int Size)
 {
@@ -740,8 +847,8 @@ int nand_dma_config_start(__u32 rw, __u32 addr, __u32 length)
 
 __u32 NAND_GetNandExtPara(__u32 para_num)
 {
-	int nand_para;
-	int ret;
+	unsigned int nand_para;
+	/*unsigned int nand0_offset = 0;*/
 	char str[9];
 
 	str[0] = 'n';
@@ -777,38 +884,46 @@ __u32 NAND_GetNandExtPara(__u32 para_num)
 		return 0xffffffff;
 	}
 
-	ret = 0;
-	nand_para = 0;
+	/*nand0_offset = fdt_path_offset(working_fdt, "nand0");*/
+	/*
+	 *if (nand0_offset < 0) {
+	 *        printf("get nand0 offset error\n");
+	 *        return 0xffffffff;
+	 *}
+	 */
 
-	ret = script_parser_fetch("/soc/nand0", str, &nand_para, 1);
-	if (ret < 0) {
-		NAND_Print("nand0_para, %d, nand type err! %d\n", para_num, ret);
+	/*nand_para = fdtdec_get_uint(working_fdt, fdt_node, str, 0);*/
+	nand_para = nand_fdt_get_uint("/soc/nand0", str);
+	if (nand_para == 0x55aaaa55)
 		return 0xffffffff;
-	} else {
-		if (nand_para == 0x55aaaa55)
-			return 0xffffffff;
-		else
-			return nand_para;
-	}
+	else
+		return nand_para;
 
 }
 
 __u32 NAND_GetNandIDNumCtrl(void)
 {
-	int id_number_ctl;
-	int ret;
+/*
+ *        unsigned int nand0_offset = 0;
+ *        unsigned int id_number_ctl = 0;
+ *
+ *        nand0_offset = fdt_path_offset(working_fdt, "nand0");
+ *        if (!nand0_offset) {
+ *                printf("get nand0 offset error\n");
+ *                return 0;
+ *        }
+ *
+ *        id_number_ctl = fdtdec_get_uint(working_fdt, nand0_offset,
+ *                        "nand0_id_number_ctl", 0);
+ */
+	unsigned int id_number_ctl;
 
-	ret = script_parser_fetch("/soc/nand0", "nand0_id_number_ctl", &id_number_ctl, 1);
-	if (ret < 0) {
-		NAND_Print("nand : get id number_ctl fail, %x\n", id_number_ctl);
-		return 0x0;
-	} else {
-		NAND_Print_DBG("nand : get id number_ctl from script:0x%x\n", id_number_ctl);
-		if (id_number_ctl == 0x55aaaa55)
-			return 0x0;
-		else
-			return id_number_ctl;
-	}
+	id_number_ctl = nand_fdt_get_uint("/soc/nand0", "nand0_id_number_ctl");
+	if (id_number_ctl == 0x55aaaa55)
+		return 0;
+	else
+		return id_number_ctl;
+
 }
 
 void nand_cond_resched(void)
@@ -818,20 +933,33 @@ void nand_cond_resched(void)
 
 __u32 NAND_GetNandCapacityLevel(void)
 {
-	int CapacityLevel;
-	int ret;
 
-	ret = script_parser_fetch("/soc/nand0", "nand0_capacity_level", &CapacityLevel, 1);
-	if (ret < 0) {
-		NAND_Print("nand: get CapacityLevel fail, %x\n", CapacityLevel);
-		return 0x0;
-	} else {
-		NAND_Print_DBG("nand: get CapacityLevel from script, %x\n", CapacityLevel);
-		if (CapacityLevel == 0x55aaaa55)
-			return 0x0;
-		else
-			return CapacityLevel;
-	}
+/*
+ *        unsigned int nand0_offset = 0;
+ *        unsigned int capacitylevel = 0;
+ *
+ *        nand0_offset = fdt_path_offset(working_fdt, "nand0");
+ *        if (!nand0_offset) {
+ *                printf("get nand0 offset error\n");
+ *                return 0;
+ *        }
+ *
+ *        capacitylevel = fdtdec_get_uint(working_fdt, nand0_offset,
+ *                        "nand0_capacity_level", 0);
+ *        if (capacitylevel == 0x55aaaa55)
+ *                return 0;
+ *        else
+ *                return capacitylevel;
+ *
+ */
+	unsigned int capacitylevel = 0;
+
+	capacitylevel = nand_fdt_get_uint("/soc/nand0", "nand0_capacity_level");
+	if (capacitylevel == 0x55aaaa55)
+		return 0;
+	else
+		return capacitylevel;
+
 }
 
 /*****************************************************************************
@@ -881,7 +1009,7 @@ int NAND_IS_Secure_sys(void)
 	if (mode == 0)
 		/* normal mode */
 		return 0;
-	else if ((mode == 1) || (mode == 2))
+	else if (mode == 1)
 		/* secure */
 		return 1;
 	return 0;
@@ -943,28 +1071,74 @@ int NAND_Get_Version(void)
 
 int nand_get_bsp_code(char *chip_code)
 {
-	unsigned int nand0_offset = 0;
+	/*unsigned int nand0_offset = 0;*/
 	const char *pchip_code = NULL;
 
-	nand0_offset = fdt_path_offset(working_fdt, "nand0");
-	if (nand0_offset == 0) {
-		//PHY_ERR("nand0: get node offset error!\n");
-		printf("nand0: get node offset error!\n");
+/*
+ *        nand0_offset = fdt_path_offset(working_fdt, "nand0");
+ *        if (nand0_offset == 0) {
+ *                //PHY_ERR("nand0: get node offset error!\n");
+ *                printf("nand0: get node offset error!\n");
+ *                return -1;
+ *        }
+ *
+ *        pchip_code = fdt_getprop(working_fdt, nand0_offset, "chip_code", NULL);
+ *        if (pchip_code == NULL) {
+ *                //PHY_ERR("nand0: get bsp_code error!\n");
+ *                printf("nand0: get chip_code error!\n");
+ *                return -1;
+ *        }
+ */
+
+	pchip_code = nand_fdt_get_string("/soc/nand0", "chip_code");
+	if (pchip_code == NULL) {
+		printf("get chip_code err\n");
 		return -1;
 	}
 
-	pchip_code = fdt_getprop(working_fdt, nand0_offset, "chip_code", NULL);
-	if (chip_code == NULL) {
-		//PHY_ERR("nand0: get bsp_code error!\n");
-		printf("nand0: get chip_code error!\n");
-		return -1;
-	}
-
-	memcpy(chip_code, pchip_code, strlen(pchip_code));
+	if (chip_code)
+		memcpy(chip_code, pchip_code, strlen(pchip_code));
 
 	return 0;
 }
+/**
+*Name         : nand_get_support_boot_check_crc
+*Description  :
+*Parameter    :
+*Return       :
+*Note         :
+**/
 
+int nand_get_support_boot_check_crc(void)
+{
+	const char *boot_crc = NULL;
+
+/*
+ *	unsigned int nand0_offset = 0;
+ *        nand0_offset = fdt_path_offset(working_fdt, "nand0");
+ *        if (nand0_offset == 0) {
+ *                //PHY_ERR("nand0: get node offset error!\n");
+ *                printf("nand0: get node offset error!\n");
+ *                return -1;
+ *        }
+ *
+ *        boot_crc = fdt_getprop(working_fdt, nand0_offset, "boot_crc", NULL);
+ *        if (boot_crc == NULL) {
+ *                return 1; [>default enable<]
+ *        }
+ */
+
+	boot_crc = nand_fdt_get_string("/soc/nand0", "boot_crc");
+	if (boot_crc == NULL) {
+		return 1; /*default enable*/
+	}
+
+	if (!memcmp(boot_crc, "disabled", sizeof("disabled")) ||
+		!memcmp(boot_crc, "disable", sizeof("disable")))
+		return 0;
+
+	return 1;
+}
 #if defined(CONFIG_MACH_SUN8IW7)
 //void NAND_GetVccq(void)
 void nand_enable_vcc_3v(void)
@@ -1011,17 +1185,37 @@ void nand_enable_vccq_1p8v(void)
 #else
 #define NAND_SIGNAL_VOLTAGE_330	0
 #define NAND_SIGNAL_VOLTAGE_180	1
+void nand_enable_vccq_3p3v(void)
+{
+	u32 reg_val = 0;
+
+	reg_val = readl(SUNXI_PIO_BASE + NAND_PIO_WITHSTAND_VOL_MODE);
+	/*bit2: PC_POWER MODE SELECT*/
+	reg_val &= (~(1 << 2));
+	writel(reg_val, SUNXI_PIO_BASE + NAND_PIO_WITHSTAND_VOL_MODE);
+}
 
 void nand_enable_vccq_1p8v(void)
 {
 	u32 reg_val = 0;
 
-	reg_val = readl(NAND_PIO_BASE_ADDR + NAND_PIO_WITHSTAND_VOL_MODE);
+	reg_val = readl(SUNXI_PIO_BASE + NAND_PIO_WITHSTAND_VOL_MODE);
 	/*bit2: PC_POWER MODE SELECT*/
 	reg_val |= 0x04;
-	writel(reg_val, NAND_PIO_BASE_ADDR + NAND_PIO_WITHSTAND_VOL_MODE);
+	writel(reg_val, SUNXI_PIO_BASE + NAND_PIO_WITHSTAND_VOL_MODE);
 }
 
 
 #endif
 
+/*record changes under common1*/
+void nand_common1_show_version(void)
+{
+	static int flag;
+
+	if (flag)
+		return;
+
+	printf("nand common1 version: %s\n", NAND_COMMON1_DRV_VERSION);
+	flag = 1;
+}

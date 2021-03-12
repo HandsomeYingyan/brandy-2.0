@@ -172,6 +172,18 @@ enum disp_data_bits {
 	DISP_DATA_16BITS   = 3,
 };
 
+enum disp_dvi_hdmi {
+	DISP_DVI_HDMI_UNDEFINED = 0,
+	DISP_DVI = 1,
+	DISP_HDMI = 2,
+};
+
+enum disp_scan_info {
+	DISP_SCANINFO_NO_DATA = 0,
+	OVERSCAN = 1,
+	UNDERSCAN = 2,
+};
+
 enum disp_color_range
 {
 	DISP_COLOR_RANGE_16_255 = 0,
@@ -565,12 +577,11 @@ struct disp_device_config {
 	enum disp_data_bits     bits;
 	enum disp_eotf          eotf;
 	enum disp_color_space   cs;
+	enum disp_dvi_hdmi	dvi_hdmi;
+	enum disp_color_range	range;
+	enum disp_scan_info	scan;
+	unsigned int	aspect_ratio;
 	unsigned int            reserve1;
-	unsigned int            reserve2;
-	unsigned int            reserve3;
-	unsigned int            reserve4;
-	unsigned int            reserve5;
-	unsigned int            reserve6;
 };
 
 /* disp_device_dynamic_config - display deivce dynamic config

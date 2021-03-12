@@ -452,6 +452,10 @@ static void sunxi_r_i2c_bus_setting(int bus_num, int onoff)
 	if (onoff) {
 		/*de-assert*/
 		reg_value = readl(SUNXI_RTWI_BRG_REG);
+		reg_value &= ~(1 << (16 + r_bus_num));
+		writel(reg_value, SUNXI_RTWI_BRG_REG);
+
+		reg_value = readl(SUNXI_RTWI_BRG_REG);
 		reg_value |= (1 << (16 + r_bus_num));
 		writel(reg_value, SUNXI_RTWI_BRG_REG);
 

@@ -29,6 +29,7 @@
 extern int NAND_UbootInit(int boot_mode);
 extern int NAND_UbootToPhy(void);
 extern int NAND_UbootExit(void);
+extern uint NAND_UbootRead_History(uint start, uint sectors, void *buffer);
 extern uint NAND_UbootRead(uint start, uint sectors, void *buffer);
 extern uint NAND_UbootWrite(uint start, uint sectors, void *buffer);
 extern int NAND_BurnBoot0(uint length, void *buffer);
@@ -44,6 +45,7 @@ extern int NAND_FlushCache(void);
 
 extern PARTITION_MBR nand_mbr;
 extern int  mbr_burned_flag;
+extern int nandphy_had_init;
 
 static int  nand_open_times;
 int nand_open_count;
@@ -54,15 +56,28 @@ int nand_open_count;
 
 	sunxi_mbr_t *mbr = (sunxi_mbr_t *)buffer;
 
-	nand_mbr.PartCount = mbr->PartCount +1;
-	nand_mbr.array[0].addr = 0;
-	nand_mbr.array[0].len = mbr->array[0].addrlo;
-	nand_mbr.array[0].user_type = 0x8000;
-	nand_mbr.array[0].classname[0] = 'm';
-	nand_mbr.array[0].classname[1] = 'b';
-	nand_mbr.array[0].classname[2] = 'r';
-	nand_mbr.array[0].classname[3] = '\0';
+#if defined(CONFIG_MACH_SUN50IW10)
+		nand_mbr.PartCount = 1;
+		nand_mbr.array[0].addr = 0;
+		nand_mbr.array[0].len = 0;
+		nand_mbr.array[0].user_type = 0x8000;
+		nand_mbr.array[0].classname[0] = 'a';
+		nand_mbr.array[0].classname[1] = 'l';
+		nand_mbr.array[0].classname[2] = 'l';
+		nand_mbr.array[0].classname[3] = '\0';
+		printf("force one part\n");
+		goto out;
+#else
 
+		nand_mbr.PartCount = mbr->PartCount + 1;
+		nand_mbr.array[0].addr = 0;
+		nand_mbr.array[0].len = mbr->array[0].addrlo;
+		nand_mbr.array[0].user_type = 0x8000;
+		nand_mbr.array[0].classname[0] = 'm';
+		nand_mbr.array[0].classname[1] = 'b';
+		nand_mbr.array[0].classname[2] = 'r';
+		nand_mbr.array[0].classname[3] = '\0';
+#endif
 	for(i=1; i<nand_mbr.PartCount; i++)
 	{
 		for(j=0;j<16;j++)
@@ -81,6 +96,9 @@ int nand_open_count;
 	nand_mbr.array[nand_mbr.PartCount-1].addr = nand_mbr.array[nand_mbr.PartCount-2].addr + nand_mbr.array[nand_mbr.PartCount-2].len;
 	nand_mbr.array[nand_mbr.PartCount-1].len = 0;
 
+#if defined(CONFIG_MACH_SUN50IW10)
+out:
+#endif
 //for DEBUG
 	{
 		printf("total part: %d\n", nand_mbr.PartCount);
@@ -141,12 +159,21 @@ int nand_uboot_probe(void)
 	return NAND_UbootProbe();
 }
 
+uint nand_uboot_read_history(uint start, uint sectors, void *buffer)
+{
+	int ret;
+	ret = NAND_UbootRead_History(start, sectors, buffer);
+	if (ret < 0)
+		return 0;
+	else
+		return sectors;
+}
 
 uint nand_uboot_read(uint start, uint sectors, void *buffer)
 {
 	int ret;
 	ret = NAND_UbootRead(start, sectors, buffer);
-	if(ret<0)
+	if (ret < 0)
 		return 0;
 	else
 		return sectors;
@@ -156,28 +183,27 @@ uint nand_uboot_write(uint start, uint sectors, void *buffer)
 {
 	int ret;
 	ret = NAND_UbootWrite(start, sectors, buffer);
-	if(ret<0)
+	if (ret < 0)
 		return 0;
 	else
 		return sectors;
 }
-
 int nand_download_boot0(uint length, void *buffer)
 {
 	int ret = 0;
 
-	if(!NAND_PhyInit())
-	{
+	if (nandphy_had_init == false)
+		ret = NAND_PhyInit();
+
+	if (!ret) {
 		ret = NAND_BurnBoot0(length, buffer);
-	}
-	else
-	{
+	} else
 		ret = -1;
-	}
+
+	/*download boot0 is the end of burn, need to exit nand phy*/
 	NAND_PhyExit();
 
 	return ret;
-
 }
 
 //read boot0 at boot stage
@@ -206,17 +232,17 @@ int nand_download_uboot(uint length, void *buffer)
 	int ret = 0;
 	debug("nand_download_uboot\n");
 
-	if(!NAND_PhyInit())
-	{
+	if (nandphy_had_init == false)
+		ret = NAND_PhyInit();
+
+	if (!ret) {
 		ret = NAND_BurnUboot(length, buffer);
 		debug("nand burn uboot error ret = %d\n", ret);
-	}
-	else
-	{
+	} else {
 		debug("nand phyinit error\n");
 		ret = -1;
 	}
-	NAND_PhyExit();
+	/*NAND_PhyExit();*/
 
 	return ret;
 }

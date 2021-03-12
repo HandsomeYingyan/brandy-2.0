@@ -21,55 +21,55 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
-static int axpnull_probe(void)
+static int pmu_axpnull_probe(void)
 {
 	tick_printf("%s %s %d axpdummy probe\n", __FILE__, __func__, __LINE__);
 	gd->vbus_status = AXP_VBUS_EXIST;
 	return 0;
 }
 
-static int axpnull_set_voltage(char *name, uint set_vol, uint onoff)
+static int pmu_axpnull_set_voltage(char *name, uint set_vol, uint onoff)
 {
 
 	return 0;
 }
 
-static int axpnull_get_voltage(char *name)
+static int pmu_axpnull_get_voltage(char *name)
 {
 	return 0;
 
 }
 
-static int axpnull_set_power_off(void)
+static int pmu_axpnull_set_power_off(void)
 {
 	return 0;
 }
 
-static int axpnull_set_sys_mode(int status)
+static int pmu_axpnull_set_sys_mode(int status)
 {
 	return 0;
 }
 
-static int axpnull_get_sys_mode(void)
+static int pmu_axpnull_get_sys_mode(void)
 {
 	return 0;
 }
 
-static int axpnull_get_key_irq(void)
+static int pmu_axpnull_get_key_irq(void)
 {
 	return 0;
 }
 
 
-U_BOOT_AXP_PMU_INIT(axpnull) = {
-	.pmu_name		= "axpnull",
-	.probe 			= axpnull_probe,
-	.set_voltage		= axpnull_set_voltage,
-	.get_voltage		= axpnull_get_voltage,
-	.set_power_off	= axpnull_set_power_off,
-	.set_sys_mode		= axpnull_set_sys_mode,
-	.get_sys_mode		= axpnull_get_sys_mode,
-	.get_key_irq		= axpnull_get_key_irq,
+U_BOOT_AXP_PMU_INIT(pmu_axpnull) = {
+	.pmu_name		= "pmu_axpnull",
+	.probe 			= pmu_axpnull_probe,
+	.set_voltage		= pmu_axpnull_set_voltage,
+	.get_voltage		= pmu_axpnull_get_voltage,
+	.set_power_off		= pmu_axpnull_set_power_off,
+	.set_sys_mode		= pmu_axpnull_set_sys_mode,
+	.get_sys_mode		= pmu_axpnull_get_sys_mode,
+	.get_key_irq		= pmu_axpnull_get_key_irq,
 	/*.set_bus_vol_limit	= axpnull_set_bus_vol_limit, */
 };
 

@@ -181,6 +181,7 @@ static int mtd_parse_partition(const char **_mtdparts,
 	return 0;
 }
 
+
 /**
  * mtd_parse_partitions - Create a partition array from an mtdparts definition
  *

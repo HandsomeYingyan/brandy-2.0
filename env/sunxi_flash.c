@@ -65,7 +65,7 @@ static int env_sunxi_flash_save(void)
 
 	ret = env_export(env_new);
 	if (ret)
-	       goto fini;
+		goto fini;
 
 	printf("Writing to env...\n");
 	if (ubi_volume_write("env", (u_char *)env_new,
@@ -125,8 +125,8 @@ static int env_sunxi_flash_save(void)
 		}
 	}
 
-	sunxi_flash_flush();
 	sunxi_flash_write_end();
+	sunxi_flash_flush();
 	ret = 0;
 
 	gd->env_valid = gd->env_valid == ENV_REDUND ? ENV_VALID : ENV_REDUND;
@@ -150,29 +150,28 @@ static int env_sunxi_flash_save(void)
 	ret = sunxi_flash_try_partition(desc, "env", &info);
 	if (ret < 0)
 		return -ENODEV;
-
 	ret = env_export(env_new);
 	if (ret)
 		goto fini;
 
 	printf("Writing to env...\n");
-#ifndef CONFIG_SUNXI_ENV_NOT_BACKUP
+#ifdef CONFIG_SUNXI_ENV_BACKUP
 	if ((uint)info.size >= ((CONFIG_ENV_SIZE * 2)/512)) {
 		char backup_buf[CONFIG_ENV_SIZE*2];
 		memcpy(backup_buf, env_new, CONFIG_ENV_SIZE);
 		memcpy((backup_buf+CONFIG_ENV_SIZE), env_new, CONFIG_ENV_SIZE);
 		if (write_env(desc, (CONFIG_ENV_SIZE*2 + 511) / 512, (uint)info.start,
-		      (u_char *)backup_buf)) {
+			 (u_char *)backup_buf)) {
 			puts("failed\n");
 			ret = 1;
-		goto fini;
+			goto fini;
 		}
 	} else {
 		printf("env size is %u\n", (uint)info.size);
 		puts("env partition is too small!\n");
 		puts("can't enabled backup env functions\n");
 		if (write_env(desc, (CONFIG_ENV_SIZE + 511) / 512, (uint)info.start,
-			      (u_char *)env_new)) {
+			 (u_char *)env_new)) {
 			puts("failed\n");
 			ret = 1;
 			goto fini;
@@ -185,16 +184,17 @@ static int env_sunxi_flash_save(void)
 		ret = 1;
 		goto fini;
 	}
-#endif
-	sunxi_flash_flush();
+#endif /* CONFIG_SUNXI_ENV_BACKUP */
+
 	sunxi_flash_write_end();
+	sunxi_flash_flush();
 	ret = 0;
 
 fini:
 	return ret;
 }
 #endif /* CONFIG_SUNXI_REDUNDAND_ENVIRONMENT */
-#endif /* CONFIG_SUNXI_UBIFS */
+#endif
 #endif /* CONFIG_CMD_SAVEENV && !CONFIG_SPL_BUILD */
 
 #if 0//def CONFIG_SUNXI_UBIFS
@@ -207,23 +207,24 @@ static int env_sunxi_flash_load(void)
 	int workmode = get_boot_work_mode();
 
 	if ((workmode & WORK_MODE_PRODUCT) &&
-	   (!(workmode & WORK_MODE_UPDATE))) {
-	       use_sprite_env();
-	       return 0;
+	    (!(workmode & WORK_MODE_UPDATE))) {
+		use_sprite_env();
+		return 0;
 	}
 
 	ret = ubi_volume_read("env", buf, (CONFIG_ENV_SIZE + 511)/512);
 	if(ret)
-	       goto err;
+		goto err;
 
 	ret = env_import(buf, 1);
 err:
 	if (ret)
-	       set_default_env(errmsg);
+		set_default_env(errmsg);
 
 	return ret;
 }
 #else
+
 static inline int read_env(struct blk_desc *desc, uint blk_cnt, uint blk_start,
 			   const void *buffer)
 {
@@ -233,9 +234,6 @@ static inline int read_env(struct blk_desc *desc, uint blk_cnt, uint blk_start,
 
 	return (n == blk_cnt) ? 0 : -1;
 }
-
-uint32_t env_calc_crc(const char *buf);
-uint32_t env_get_crc(const char *buf);
 
 #ifdef CONFIG_SUNXI_REDUNDAND_ENVIRONMENT
 static int env_sunxi_flash_load(void)
@@ -302,9 +300,15 @@ err:
 	return ret;
 }
 #else
+
+#ifdef CONFIG_SUNXI_ENV_BACKUP
+uint32_t env_calc_crc(const char *buf);
+uint32_t env_get_crc(const char *buf);
+#endif
+
 static int env_sunxi_flash_load(void)
 {
-#ifndef CONFIG_SUNXI_ENV_NOT_BACKUP
+#ifdef CONFIG_SUNXI_ENV_BACKUP
 	ALLOC_CACHE_ALIGN_BUFFER(char, buf, CONFIG_ENV_SIZE*2);
 #else
 	ALLOC_CACHE_ALIGN_BUFFER(char, buf, CONFIG_ENV_SIZE);
@@ -333,7 +337,7 @@ static int env_sunxi_flash_load(void)
 		goto err;
 	}
 
-#ifndef CONFIG_SUNXI_ENV_NOT_BACKUP
+#ifdef CONFIG_SUNXI_ENV_BACKUP
 	if (read_env(desc, (CONFIG_ENV_SIZE*2 + 511) / 512, (uint)info.start,
 		     buf)) {
 #else
@@ -345,7 +349,7 @@ static int env_sunxi_flash_load(void)
 		goto err;
 	}
 
-#ifndef CONFIG_SUNXI_ENV_NOT_BACKUP
+#ifdef CONFIG_SUNXI_ENV_BACKUP
 	char *normal_buf_p = buf;
 	char *backup_buf_p = buf;
 	//point to backup area
@@ -397,7 +401,7 @@ err:
 	return ret;
 }
 #endif /* CONFIG_SUNXI_REDUNDAND_ENVIRONMENT */
-#endif /* CONFIG_SUNXI_UBIFS */
+#endif
 
 U_BOOT_ENV_LOCATION(sunxi_flash) = {
 	.location		     = ENVL_SUNXI_FLASH,

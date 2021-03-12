@@ -10,8 +10,9 @@
 #include <asm/arch/cpu.h>
 #include <asm/arch/clock.h>
 #include <asm/arch/timer.h>
-
-
+#include <fdt_support.h>
+#include <sunxi_board.h>
+#include <asm/arch/efuse.h>
 
 void clock_init_uart(void)
 {
@@ -24,14 +25,21 @@ void clock_init_uart(void)
 	       APB2_CLK_RATE_M(1),
 	       &ccm->apb2_cfg);
 
-	/* open the clock for uart */
-	setbits_le32(&ccm->uart_gate_reset,
+	clrbits_le32(&ccm->uart_gate_reset,
 		     1 << (CONFIG_CONS_INDEX - 1));
+	udelay(2);
 
+	clrbits_le32(&ccm->uart_gate_reset,
+		     1 << (RESET_SHIFT + CONFIG_CONS_INDEX - 1));
+	udelay(2);
 	/* deassert uart reset */
 	setbits_le32(&ccm->uart_gate_reset,
 		     1 << (RESET_SHIFT + CONFIG_CONS_INDEX - 1));
+	/* open the clock for uart */
+	setbits_le32(&ccm->uart_gate_reset,
+		     1 << (CONFIG_CONS_INDEX - 1));
 }
+
 
 static int clk_get_pll_para(struct core_pll_freq_tbl *factor, int pll_clk)
 {
@@ -408,9 +416,9 @@ int usb_close_clock(void)
 	writel(reg_value, (SUNXI_CCM_BASE + 0xA8C));
 	__msdelay(1);
 
-	reg_value = readl(SUNXI_CCM_BASE + 0xcc);
+	reg_value = readl(SUNXI_CCM_BASE + 0xA70);
 	reg_value &= ~((1 << 29) | (1 << 30));
-	writel(reg_value, (SUNXI_CCM_BASE + 0xcc));
+	writel(reg_value, (SUNXI_CCM_BASE + 0xA70));
 	__msdelay(1);
 
 	return 0;
@@ -438,11 +446,65 @@ int sunxi_set_sramc_mode(void)
 	reg_val &= ~(0x1 << 16);
 	writel(reg_val, &ccm->ve_clk_cfg);
 
+	reg_val = readl(&ccm->ve_gate_reset);
+	reg_val &= ~(0x1 << 0);
+	reg_val &= ~(0x1 << 16);
+	writel(reg_val, &ccm->ve_gate_reset);
+
 	/* DE gating&DE Bus Reset :brom set them, but not require now */
 	reg_val = readl(&ccm->de_clk_cfg);
 	reg_val &= ~(0x1 << 0);
 	reg_val &= ~(0x1 << 16);
 	writel(reg_val, &ccm->de_clk_cfg);
+
+	reg_val = readl(&ccm->de_gate_reset);
+	reg_val &= ~(0x1 << 0);
+	reg_val &= ~(0x1 << 16);
+	writel(reg_val, &ccm->de_gate_reset);
+
+	return 0;
+}
+
+int ir_clk_cfg(void)
+{
+#define SUNXI_IR_GATING_REG (SUNXI_PRCM_BASE + 0x1CC)
+#define SUNXI_IR_RESET_REG (SUNXI_PRCM_BASE + 0x1CC)
+#define SUNXI_IR_GATING_OFFSET 0
+#define SUNXI_IR_RESET_OFFSET 16
+#define R_IR_RX_CLK_REG (SUNXI_PRCM_BASE + 0x1C0)
+#define R_IR_SCLK_GATING_OFFSET 31
+#define R_IR_CLK_SRC_OFFSET 24 /*2bit*/
+#define R_IR_CLK_RATIO_N_OFFSET 8
+#define R_IR_CLK_RATIO_M_OFFSET 0
+
+	/* //reset */
+	clrbits_le32(SUNXI_IR_RESET_REG, 1 << SUNXI_IR_RESET_OFFSET);
+
+	__msdelay(1);
+
+	setbits_le32(SUNXI_IR_RESET_REG, 1 << SUNXI_IR_RESET_OFFSET);
+
+	/*gating*/
+	clrbits_le32(SUNXI_IR_GATING_REG, 1 << SUNXI_IR_GATING_OFFSET);
+
+	__msdelay(1);
+
+	setbits_le32(SUNXI_IR_GATING_REG, 1 << SUNXI_IR_GATING_OFFSET);
+
+	/* //config Special Clock for IR   (24/1/(0+1))=24MHz) */
+	/* //Select 24MHz */
+	clrbits_le32(R_IR_RX_CLK_REG, 0x3 << R_IR_CLK_SRC_OFFSET);
+	setbits_le32(R_IR_RX_CLK_REG, 1 << R_IR_CLK_SRC_OFFSET);
+
+	clrbits_le32(R_IR_RX_CLK_REG, 0x3 << R_IR_CLK_RATIO_N_OFFSET);/* //Divisor N = 1 */
+	clrbits_le32(R_IR_RX_CLK_REG, 0x1f << R_IR_CLK_RATIO_N_OFFSET);/* //Divisor M = 0 */
+
+	__msdelay(1);
+
+	/* //open Clock */
+	setbits_le32(R_IR_RX_CLK_REG, 1 << R_IR_SCLK_GATING_OFFSET);
+
+	__msdelay(2);
 	return 0;
 }
 

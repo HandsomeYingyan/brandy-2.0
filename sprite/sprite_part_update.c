@@ -81,7 +81,7 @@ static void update_next_process(int flag)
 {
 	if (flag) {
 		printf("update finishing, will be reboot \n");
-		sunxi_sprite_exit(0);
+		get_boot_storage_type() == STORAGE_NAND ? sunxi_sprite_exit(0) : 0;
 		udelay(3000000);
 
 		/*wil not return and reboot system*/
@@ -365,6 +365,32 @@ static int update_uboot_partition(char *file_buf, int *update_flag)
 }
 #endif
 
+#define ENV_UPDATE_OVERWRITE 0 /*whether need to overwrite to update env data*/
+static int part_env_import(const char *buf, int check)
+{
+	env_t *ep = (env_t *)buf;
+
+	if (check) {
+		uint32_t crc;
+
+		memcpy(&crc, &ep->crc, sizeof(crc));
+
+		if (crc32(0, ep->data, ENV_SIZE) != crc) {
+			printf("env date: bad CRC, can't update env \n");
+			return -1;
+		}
+	}
+
+	if (himport_r(&env_htab, (char *)ep->data, ENV_SIZE, '\0',
+			   ENV_UPDATE_OVERWRITE ? 0 : H_NOCLEAR, 0, 0, NULL)) {
+		return 0;
+	}
+
+	pr_err("Cannot import environment: errno = %d\n", errno);
+
+	return -1;
+}
+
 static int update_partition(const char *part_name, void *buf, int size)
 {
 	unsigned int start_block = 0;
@@ -378,14 +404,26 @@ static int update_partition(const char *part_name, void *buf, int size)
 		return -1;
 	}
 #endif
-	start_block =
-	    sunxi_partition_get_offset_byname((const char *)part_name);
-	rblock = size / 512;
+	/*if the name is env partitions, will write uboot env buf and then save
+	 * to flash. it can save old env var or clear */
+	if (!strncmp(part_name, "env", 3)) {
+		if (!part_env_import(buf, 1))
+			/* save env to flash */
+			env_save();
+		else
+			return -1;
 
-	ret = update_write_flash(start_block, rblock, (void *)buf);
-	part_debug("sunxi flash write :offset %x, %d bytes %s\n",
-		   start_block << 9, rblock << 9, ret ? "OK" : "ERROR");
-	return ret == 0 ? 1 : 0;
+	} else { /*other paritions update*/
+		start_block =
+		    sunxi_partition_get_offset_byname((const char *)part_name);
+		rblock = size / 512;
+
+		ret = update_write_flash(start_block, rblock, (void *)buf);
+		part_debug("sunxi flash write :offset %x, %d bytes %s\n",
+			   start_block << 9, rblock << 9, ret ? "OK" : "ERROR");
+		return ret == 0 ? -1 : 0;
+	}
+	return 0;
 }
 
 int update_main(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[])
@@ -470,12 +508,19 @@ int update_main(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[])
 		} else {
 			/*wirte down the file to flash, there will 512 byte
 			 * aligned*/
-			if ((file_size + 512) <= part_size)
+
+			if ((file_size + 512) <= part_size) {
+				/* set 0xff to the file_date end */
+				memset((file_buf + file_size), 0xff, 512);
 				ret = update_partition(part_name, file_buf,
 						       (file_size + 512));
-			else
+			} else {
+				/* set 0xff to the file_date end */
+				memset((file_buf + file_size), 0xff,
+						       (part_size - file_size));
 				ret = update_partition(part_name, file_buf,
 						       part_size);
+			}
 			/*if updated, need reboot*/
 			update_flag = 1;
 
@@ -493,6 +538,7 @@ int update_main(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[])
 	if (file_buf)
 		free(file_buf);
 
+	sunxi_flash_write_end();
 	/*flush the flash*/
 	sunxi_flash_flush();
 	sunxi_sprite_flush();

@@ -167,6 +167,7 @@ extern unsigned int get_nftl_cap(void);
 extern unsigned int get_first_nftl_cap(void);
 extern unsigned int get_phy_partition_num(struct _nand_info*nand_info);
 extern unsigned int nftl_read(unsigned int start_sector,unsigned int len,unsigned char *buf);
+extern unsigned int nftl_read_history(unsigned int start_sector, unsigned int len, unsigned char *buf);
 extern unsigned int nftl_write(unsigned int start_sector,unsigned int len,unsigned char *buf);
 extern unsigned int nftl_flush_write_cache(void);
 extern unsigned int nftl_write_end(void);

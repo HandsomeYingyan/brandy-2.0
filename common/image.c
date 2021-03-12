@@ -195,7 +195,6 @@ static const struct table_info table_info[IH_COUNT] = {
 int image_check_hcrc(const image_header_t *hdr)
 {
 	ulong hcrc;
-	ulong image_hcrc;
 	ulong len = image_get_header_size();
 	image_header_t header;
 
@@ -204,15 +203,8 @@ int image_check_hcrc(const image_header_t *hdr)
 	image_set_hcrc(&header, 0);
 
 	hcrc = crc32(0, (unsigned char *)&header, len);
-	image_hcrc = image_get_hcrc(hdr);
 
-	if (hcrc == image_hcrc) {
-		printf("   hcrc : %lu, image-hcrc : %lu\n", hcrc, image_hcrc);
-		return 1;
-	} else {
-		printf("   hcrc : %lu, image-hcrc : %lu\n", hcrc, image_hcrc);
-		return 0;
-	}
+	return (hcrc == image_get_hcrc(hdr));
 }
 
 int image_check_dcrc(const image_header_t *hdr)
@@ -220,15 +212,8 @@ int image_check_dcrc(const image_header_t *hdr)
 	ulong data = image_get_data(hdr);
 	ulong len = image_get_data_size(hdr);
 	ulong dcrc = crc32_wd(0, (unsigned char *)data, len, CHUNKSZ_CRC32);
-	ulong image_dcrc = image_get_dcrc(hdr);
 
-	if (dcrc == image_dcrc) {
-		printf("\n   dcrc : %lu, image-dcrc : %lu\n   ", dcrc, image_dcrc);
-		return 1;
-	} else {
-		printf("\n   dcrc : %lu, image-hcrc : %lu\n   ", dcrc, image_dcrc);
-		return 0;
-	}
+	return (dcrc == image_get_dcrc(hdr));
 }
 
 /**

@@ -145,7 +145,7 @@ s32 tve_low_set_tv_mode(u32 sel, enum disp_tv_mode mode, u32 cali)
 		TVE_CLR_BIT(sel, TVE_000, 0x1<<0);
 		TVE_WUINT32(sel, TVE_130, reg_sync);
 		TVE_WUINT32(sel, TVE_014, 0x00820020);
-		TVE_WUINT32(sel, TVE_130, 0x20050000);
+		TVE_WUINT32(sel, TVE_130, 0x20050013);
 		TVE_WUINT32(sel, TVE_380, (deflick == 0)
 					? 0x00000000 : 0x0<<10 | 0x3<<8);
 		break;
@@ -181,7 +181,7 @@ s32 tve_low_set_tv_mode(u32 sel, enum disp_tv_mode mode, u32 cali)
 		TVE_WUINT32(sel, TVE_000, 0x00300000);
 		TVE_CLR_BIT(sel, TVE_000, 0x1<<0);
 		TVE_WUINT32(sel, TVE_130, reg_sync);
-		TVE_WUINT32(sel, TVE_130, 0x20050370);
+		TVE_WUINT32(sel, TVE_130, 0x20050364);
 		TVE_WUINT32(sel, TVE_380, (deflick == 0)
 					? 0x00000000 : 0x0<<10 | 0x3<<8);
 		break;
@@ -536,6 +536,19 @@ s32 tve_low_dac_autocheck_disable(u32 sel)
 	return 0;
 }
 
+#if defined (CONFIG_MACH_SUN50IW9)
+u32 tve_low_get_sid(u32 index)
+{
+	u32 efuse = 0;
+
+	efuse = (readl(0x0300622c) >> 16) + (readl(0x03006230) << 16);
+
+	if (efuse > 5)
+		efuse -= 5;
+
+	return efuse;
+}
+#else
 u32 tve_low_get_sid(u32 index)
 {
 	s32 ret = 0;
@@ -551,6 +564,7 @@ u32 tve_low_get_sid(u32 index)
 
 	return efuse[index];
 }
+#endif
 
 s32 tve_low_enhance(u32 sel, u32 mode)
 {

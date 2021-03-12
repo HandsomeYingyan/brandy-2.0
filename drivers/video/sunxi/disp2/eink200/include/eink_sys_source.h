@@ -31,7 +31,7 @@
 
 #include "eink_driver.h"
 
-#define EINK_PRINT_LEVEL 0x1
+#define EINK_PRINT_LEVEL 0
 /* #define TIME_COUNTER_DEBUG */
 //#define DE_WB_DEBUG
 //#define SAVE_DE_WB_BUF

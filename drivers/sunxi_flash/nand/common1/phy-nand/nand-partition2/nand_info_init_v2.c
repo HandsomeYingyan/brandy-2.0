@@ -239,18 +239,18 @@ unsigned int get_no_use_block_v3(struct _nand_info *nand_info, uchar chip, uint1
 	unsigned int i, nPage;
 	unsigned short nDieNum = 0, nBlkNum = 0;
 	unsigned char spare[BYTES_OF_USER_PER_PAGE];
-	uint64 SectBitmap;
+	/*uint64 SectBitmap;*/
 	//    unsigned int ret;
 
 	//    good = 0;
 	nDieNum = chip;
 	nBlkNum = start_block + 3;
 	nPage = 0;
-	SectBitmap = nand_info->FullBitmap;
+	/*SectBitmap = nand_info->FullBitmap;*/
 
 	for (i = 0; i < 50; i++) {
 		if (!BlockCheck(nDieNum, nBlkNum)) {
-			read_virtual_page(nDieNum, nBlkNum, nPage, SectBitmap, nand_info->temp_page_buf, spare);
+			read_virtual_page(nDieNum, nBlkNum, nPage, 0, NULL, spare);
 			if ((spare[0] == 0xff) && (spare[1] == 0xaa) && (spare[2] == 0xdd)) {
 				return nBlkNum;
 			}
@@ -510,20 +510,28 @@ int nand_info_init(struct _nand_info *nand_info, uchar chip, uint16 start_block,
 	//   nand_info->temp_page_buf = NAND_Malloc(bytes_per_page);
 
 	nand_info->temp_page_buf = NAND_Malloc(bytes_per_page);
-	if (nand_info->temp_page_buf == NULL)
+	if (nand_info->temp_page_buf == NULL) {
 		NFTL_ERR("[NE]%s: malloc fail for temp_page_buf!\n", __func__);
+		return NFTL_FAILURE;
+	}
 
 	nand_info->factory_bad_block = NAND_Malloc(FACTORY_BAD_BLOCK_SIZE);
-	if (nand_info->factory_bad_block == NULL)
+	if (nand_info->factory_bad_block == NULL) {
 		NFTL_ERR("[NE]%s: malloc fail for factory_bad_block!\n", __func__);
+		return NFTL_FAILURE;
+	}
 
 	nand_info->new_bad_block = NAND_Malloc(PHY_PARTITION_BAD_BLOCK_SIZE);
-	if (nand_info->new_bad_block == NULL)
+	if (nand_info->new_bad_block == NULL) {
 		NFTL_ERR("[NE]%s: malloc fail for new_bad_block!\n", __func__);
+		return NFTL_FAILURE;
+	}
 
 	nand_info->mbr_data = NAND_Malloc(sizeof(PARTITION_MBR));
-	if (nand_info->mbr_data == NULL)
+	if (nand_info->mbr_data == NULL) {
 		NFTL_ERR("[NE]%s: malloc fail for mbr_data!\n", __func__);
+		return NFTL_FAILURE;
+	}
 
 	memset(nand_info->factory_bad_block, 0xff, FACTORY_BAD_BLOCK_SIZE);
 	memset(nand_info->new_bad_block, 0xff, PHY_PARTITION_BAD_BLOCK_SIZE);
@@ -849,7 +857,7 @@ int check_mbr_v2(struct _nand_info *nand_info, PARTITION_MBR *mbr)
 			}
 			//NFTL_DBG("[NE]len: 0x%x!\n",nand_info->partition[i].nand_disk[m].size);
 			if (com_len[k] != nand_info->partition[i].nand_disk[m].size) {
-				NFTL_DBG("[NE]len1: 0x%x len2: 0x%x!\n", com_len[j], nand_info->partition[i].nand_disk[m].size);
+				NFTL_DBG("[NE]len1: 0x%x len2: 0x%x!\n", com_len[k], nand_info->partition[i].nand_disk[m].size);
 				return 1;
 			}
 			k++;

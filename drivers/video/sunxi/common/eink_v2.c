@@ -145,9 +145,12 @@ int bmp_buffer_change2Gray(sunxi_bmp_store_t *bmp_info, char *dst_buf)
 				tmp += 4;
 			}
 		}
-	} else
+	} else {
+		printf("[%s]: ERR LINE %d\n", __func__, __LINE__);
 		ret = -1;
+	}
 
+	EINK_INFO_MSG("[%s]: success!\n", __func__);
 	return ret;
 }
 
@@ -165,16 +168,17 @@ int sunxi_eink_get_bmp_buffer(char *name, char *bmp_gray_buf)
 		partno = sunxi_partition_get_partno_byname("boot-resource");
 		if (partno < 0) {
 			printf("[%s]:Get bootloader or boot-resource partition number fail!\n", __func__);
-		} else
-			//sprintf(bmp_argv[2], "%x:0", partno);
+		} else {
 			sprintf(bmp_argv[2], "0:%x", partno);
+			EINK_INFO_MSG("[%s]: get boot-resource part\n", __func__);
+		}
 
 		if (!bmp_gray_buf) {
 			printf("sunxi_Eink_Get_bmp_buffer: bmp_gray_buffor is null for %s\n", name);
 			return -1;
 		}
 	}
-	EINK_INFO_MSG("partno = %d\n", partno);
+	EINK_INFO_MSG("  partno = %d\n", partno);
 
 	sprintf(bmp_addr, "%lx", (ulong)bmp_gray_buf);
 	bmp_argv[3] = bmp_addr;
@@ -187,7 +191,7 @@ int sunxi_eink_get_bmp_buffer(char *name, char *bmp_gray_buf)
 	}
 	bmp_info.buffer = (void *)CONFIG_SYS_SDRAM_BASE;
 	if (sunxi_bmp_decode((ulong)bmp_gray_buf, &bmp_info)) {
-		debug("decode bmp fail\n");
+		printf("[%s]:decode bmp fail\n", __func__);
 		return -1;
 	}
 
@@ -208,7 +212,6 @@ int sunxi_eink_fresh_image(char *name, __u32 update_mode)
 	char *bmp_buffer = NULL;
 	char primary_key[25];
 	s32 value = 0;
-
 	struct eink_img cimage;
 
 	sprintf(primary_key, "eink");
@@ -221,6 +224,7 @@ int sunxi_eink_fresh_image(char *name, __u32 update_mode)
 	if (ret == 1)
 		height = value;
 
+	printf("[%s]: width = %d, height = %d\n", __func__, width, height);
 	buf_size = (width * height) << 2;
 
 	bmp_buffer = (char *)malloc_aligned(buf_size, ARCH_DMA_MINALIGN);
@@ -267,3 +271,4 @@ int sunxi_eink_fresh_image(char *name, __u32 update_mode)
 
 	return 0;
 }
+EXPORT_SYMBOL(sunxi_eink_fresh_image);

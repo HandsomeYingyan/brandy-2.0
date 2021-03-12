@@ -4,6 +4,8 @@
  * Copyright (C) 2019 Allwinner.
  * SPDX-License-Identifier: GPL-2.0
  */
+#ifndef __RAWNAND_OPS_H
+#define __RAWNAND_OPS_H
 #include "rawnand.h"
 
 #define NAND_OPEN_BLOCK_CNT (8)
@@ -33,3 +35,4 @@ struct rawnand_ops {
 extern struct df_read_page_end df_read_page_end;
 extern struct rawnand_ops rawnand_ops;
 extern struct nand_phy_write_lsb_cache nand_phy_w_cache[NAND_OPEN_BLOCK_CNT];
+#endif

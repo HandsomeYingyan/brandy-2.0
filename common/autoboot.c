@@ -221,21 +221,32 @@ static int __abortboot(int bootdelay)
 	printf("Hit any key to stop autoboot: %2d ", bootdelay);
 #endif
 
-#ifndef CONFIG_SUNXI_FREERTOS
 	/*
 	 * Check if key already pressed
 	 */
 	if (tstc()) {	/* we got a key press	*/
-		(void) getc();  /* consume input	*/
-		puts("\b\b\b 0");
-		abort = 1;	/* don't auto boot	*/
+		char input, i;
+		for (i = 0; i < 3; i++) {
+			input = getc();  /* consume input       */
+			if (input == 's' || input == 'S') {
+				 mdelay(10);
+			} else {
+				break;
+			}
+		}
+		if (i >= 3) {
+			puts("\b\b\b 0");
+			abort = 1;	/* don't auto boot	*/
+			set_boot_debug_mode(1);
+		}
+
 	}
-#endif
 
 	if (sunxi_get_uboot_shell() == 1) {
 		abort = 1;
 		bootdelay = 0;
 		sunxi_set_uboot_shell(0);
+		set_boot_debug_mode(1);
 	}
 
 	while ((bootdelay > 0) && (!abort)) {
@@ -272,9 +283,6 @@ static int abortboot(int bootdelay)
 	if (bootdelay >= 0)
 		abort = __abortboot(bootdelay);
 
-	if (abort)
-		gd->debug_mode = 8;
-
 #ifdef CONFIG_SILENT_CONSOLE
 	if (abort)
 		gd->flags &= ~GD_FLG_SILENT;
@@ -307,28 +315,12 @@ const char *bootdelay_process(void)
 #ifdef CONFIG_BOOTCOUNT_LIMIT
 	unsigned long bootcount = 0;
 	unsigned long bootlimit = 0;
-	char bootcmd[128];
 #endif /* CONFIG_BOOTCOUNT_LIMIT */
 
 #ifdef CONFIG_BOOTCOUNT_LIMIT
 	bootcount = bootcount_load();
 	bootcount++;
-#ifdef CONFIG_BOOTCOUNT_ENV
-	//In sunxi uboot,this area is sensitive
-	//Some mode flags are saved in the bootcmd of env
-	//like fastboot mode,bootcmd is "run setargs_XXX boot_fastboot"
-	//So we can't simply save env back to flash ("bootcount_store" will save env back to flash)
-	//Here will save the normal mode flag back to flash
-	//if it is another mode flag,let it remain in memory
-	memset(bootcmd, 0x0, 128);
-	strcpy(bootcmd, env_get("bootcmd"));
-	env_set("bootcmd", "run setargs_nand boot_normal");
-#endif
 	bootcount_store(bootcount);
-#ifdef CONFIG_BOOTCOUNT_ENV
-	//other mode flag,let it remain in memory
-	env_set("bootcmd", bootcmd);
-#endif
 	env_set_ulong("bootcount", bootcount);
 	bootlimit = env_get_ulong("bootlimit", 10, 0);
 #endif /* CONFIG_BOOTCOUNT_LIMIT */

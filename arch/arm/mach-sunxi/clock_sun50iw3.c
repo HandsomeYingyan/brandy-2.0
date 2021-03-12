@@ -305,9 +305,9 @@ int usb_close_clock(void)
 	writel(reg_value, (SUNXI_CCM_BASE + 0xA8C));
 	__msdelay(1);
 
-	reg_value = readl(SUNXI_CCM_BASE + 0xcc);
+	reg_value = readl(SUNXI_CCM_BASE + 0xA70);
 	reg_value &= ~((1 << 29) | (1 << 30));
-	writel(reg_value, (SUNXI_CCM_BASE + 0xcc));
+	writel(reg_value, (SUNXI_CCM_BASE + 0xA70));
 	__msdelay(1);
 
 	return 0;

@@ -23,10 +23,3 @@ config NETCONSOLE
 	  See README.NetConsole for details.
 
 endif   # if NET
-
-config SUNXI_GPIO_INT_DEB
-	bool "Change GPIO interrupt clock"
-	default n
-	help
-	  if want to modify the XR829 wifi interrupt sampling rate,
-	  enable this

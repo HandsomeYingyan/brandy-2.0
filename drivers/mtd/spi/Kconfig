@@ -160,9 +160,13 @@ config SPI_FLASH_PUYA
 config SPI_FLASH_FM
 	bool "FM SPI flash support"
 	help
-	  Add support for various FM SPI flash chips (FM25xxx)
-endif
+	  Add support for various FM SPI flash chips (FM25qxxx)
 
+config SPI_FLASH_XT
+	bool "XT SPI flash support"
+	help
+	  Add support for various XT SPI flash chips (XT24xxx)
+endif
 
 config SPI_FLASH_USE_4K_SECTORS
 	bool "Use small 4096 B erase sectors"

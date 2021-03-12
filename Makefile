@@ -83,6 +83,15 @@ else
   Q = @
 endif
 
+buildconfig = ../../../.buildconfig
+ifeq ($(buildconfig), $(wildcard $(buildconfig)))
+	LICHEE_BUSSINESS=$(shell cat ../../../.buildconfig | grep -w "LICHEE_BUSSINESS" | awk -F= '{printf $$2}')
+	LICHEE_CHIP_CONFIG_DIR=$(shell cat ../../../.buildconfig | grep -w "LICHEE_CHIP_CONFIG_DIR" | awk -F= '{printf $$2}')
+	LICHEE_ARCH=$(shell cat $(buildconfig) | grep -w "LICHEE_ARCH" | awk -F= '{printf $$2}')
+	export LICHEE_BUSSINESS LICHEE_CHIP_CONFIG_DIR LICHEE_IC LICHEE_ARCH
+endif
+
+
 # If the user is running make -s (silent mode), suppress echoing of
 # commands
 
@@ -237,18 +246,48 @@ HOSTOS := $(shell uname -s | tr '[:upper:]' '[:lower:]' | \
 
 export	HOSTARCH HOSTOS
 
-#########################################################################
-toolchain_archive_arm=$(srctree)/../tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi.tar.xz
-tooldir_arm=$(srctree)/../tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi
-arm_toolchain_check=$(strip $(shell if [  -d $(tooldir_arm) ];  then  echo yes;  fi))
 
-ifneq ("$(arm_toolchain_check)", "yes")
-    $(info "gcc tools chain for arm not exist")
-    $(info "Prepare toolchain...")
-    $(shell mkdir -p $(tooldir_arm))
-    $(shell tar --strip-components=1 -xf $(toolchain_archive_arm) -C $(tooldir_arm))
+defconfig = ./configs/$(MAKECMDGOALS)
+
+defconfig_check=$(shell if [ -f $(defconfig) ]; then echo yes; else echo no; fi;)
+config_check=$(shell if [ -f .config ]; then echo yes; else echo no; fi;)
+ifeq (x$(defconfig_check), xyes)
+	CONFIG_ARM=$(shell cat $(defconfig) | grep -w "CONFIG_ARM" | awk -F= '{printf $$2}')
+	CONFIG_RISCV=$(shell cat $(defconfig) | grep -w "CONFIG_RISCV" | awk -F= '{printf $$2}')
+else
+ifeq (x$(config_check), xyes)
+	CONFIG_ARM=$(shell cat .config | grep -w "CONFIG_ARM" | awk -F= '{printf $$2}')
+	CONFIG_RISCV=$(shell cat .config | grep -w "CONFIG_RISCV" | awk -F= '{printf $$2}')
 endif
+endif
+
+#########################################################################
+RISCV_PATH=riscv64-linux-x86_64-20200528
+riscv_toolchain_check=$(shell if [ ! -d ../tools/toolchain/$(RISCV_PATH) ]; then echo yes; else echo no; fi;)
+ifeq (x$(riscv_toolchain_check), xyes)
+$(info Prepare riscv toolchain ...);
+$(shell mkdir -p ../tools/toolchain/$(RISCV_PATH) || exit 1)
+$(shell tar --strip-components=1 -xf ../tools/toolchain/$(RISCV_PATH).tar.xz -C ../tools/toolchain/$(RISCV_PATH) || exit 1)
+endif
+arm_toolchain_check=$(shell if [ ! -d ../tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi ]; then echo yes; else echo no; fi;)
+ifeq (x$(arm_toolchain_check), xyes)
+$(info Prepare arm toolchain ...);
+$(shell mkdir -p ../tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi || exit 1)
+$(shell tar --strip-components=1 -xf ../tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi.tar.xz -C ../tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi || exit 1)
+endif
+
+
+ifeq (x$(CONFIG_RISCV), xy)
+CROSS_COMPILE := $(srctree)/../tools/toolchain/$(RISCV_PATH)/bin/riscv64-unknown-linux-gnu-
+endif
+
+ifeq (x$(CONFIG_ARM), xy)
 CROSS_COMPILE := $(srctree)/../tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi/bin/arm-linux-gnueabi-
+endif
+
+CROSS_COMPILE ?= $(srctree)/../tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi/bin/arm-linux-gnueabi-
+
+#######################################################################
 # set default to nothing for native builds
 ifeq ($(HOSTARCH),$(ARCH))
 CROSS_COMPILE ?=
@@ -368,7 +407,8 @@ KBUILD_CPPFLAGS := -D__KERNEL__ -D__UBOOT__
 KBUILD_CFLAGS   := -Wall -Wstrict-prototypes \
 		   -Wno-format-security \
 		   -fno-builtin -ffreestanding\
-		   -Werror
+		   -Werror\
+		   -Wno-packed-bitfield-compat
 KBUILD_CFLAGS	+= -fshort-wchar
 KBUILD_AFLAGS   := -D__ASSEMBLY__
 
@@ -487,6 +527,10 @@ config: scripts_basic outputmakefile FORCE
 
 %config: scripts_basic outputmakefile FORCE
 	$(Q)$(MAKE) $(build)=scripts/kconfig $@
+ifneq ($(findstring defconfig, $(MAKECMDGOALS)),)
+	$(shell md5sum "configs/$(MAKECMDGOALS)" | awk '{printf $$1}' > .tmp_defcofig.o.md5sum)
+	$(Q)md5sum ".config" | awk '{printf $$1}' > .tmp_config_from_defconfig.o.md5sum
+endif
 
 else
 # ===========================================================================
@@ -562,8 +606,12 @@ export EFI_TARGET	# binutils target if EFI is natively supported
 # standard location.
 buildconfig = ../../../.buildconfig
 ifeq ($(buildconfig), $(wildcard $(buildconfig)))
-	LICHEE_BUSSINESS=$(shell cat ../../../.buildconfig | grep -w "LICHEE_BUSSINESS" | awk -F= '{printf $$2}')
-	LICHEE_CHIP_CONFIG_DIR=$(shell cat ../../../.buildconfig | grep -w "LICHEE_CHIP_CONFIG_DIR" | awk -F= '{printf $$2}')
+	LICHEE_BUSSINESS=$(shell cat $(buildconfig) | grep -w "LICHEE_BUSSINESS" | awk -F= '{printf $$2}')
+	LICHEE_CHIP_CONFIG_DIR=$(shell cat $(buildconfig) | grep -w "LICHEE_CHIP_CONFIG_DIR" | awk -F= '{printf $$2}')
+	LICHEE_IC=$(shell cat $(buildconfig) | grep -w "LICHEE_IC" | awk -F= '{printf $$2}')
+	LICHEE_CHIP=$(shell cat $(buildconfig) | grep -w "LICHEE_CHIP" | awk -F= '{printf $$2}')
+	LICHEE_BOARD=$(shell cat $(buildconfig) | grep -w "LICHEE_BOARD" | awk -F= '{printf $$2}')
+	LICHEE_PLAT_OUT=$(shell cat $(buildconfig) | grep -w "LICHEE_PLAT_OUT" | awk -F= '{printf $$2}')
 endif
 ifndef LDSCRIPT
 	#LDSCRIPT := $(srctree)/board/$(BOARDDIR)/u-boot.lds.debug
@@ -758,7 +806,9 @@ PLATFORM_LIBGCC := -L $(shell dirname `$(CC) $(c_flags) -print-libgcc-file-name`
 endif
 PLATFORM_LIBS += $(PLATFORM_LIBGCC)
 ifeq ($(CONFIG_SUNXI_NAND),y)
+ifneq ($(findstring $(CONFIG_SYS_CONFIG_NAME),"sun8iw18p1" "sun50iw3p1" "sun8iw7p1"),)
 PLATFORM_LIBS += drivers/sunxi_flash/nand/$(CONFIG_SYS_CONFIG_NAME)/libnand-$(CONFIG_SYS_CONFIG_NAME)
+endif
 endif
 
 ifdef CONFIG_CC_COVERAGE
@@ -916,6 +966,9 @@ quiet_cmd_cfgcheck = CFGCHK  $2
 cmd_cfgcheck = $(srctree)/scripts/check-config.sh $2 \
 		$(srctree)/scripts/config_whitelist.txt $(srctree)
 
+DTS_PATH=$(PWD)/arch/arm/dts
+BOARD_DTS_EXIST=$(shell if [ -f $(DTS_PATH)/$(LICHEE_IC)-$(LICHEE_BOARD)-board.dts ]; then echo yes; else echo no; fi;)
+
 all:		$(ALL-y) cfg
 ifeq ($(CONFIG_DM_I2C_COMPAT)$(CONFIG_SANDBOX),y)
 	@echo "===================== WARNING ======================"
@@ -933,6 +986,11 @@ PHONY += dtbs
 dtbs: dts/dt.dtb
 	@:
 dts/dt.dtb: u-boot
+ifeq (x$(BOARD_DTS_EXIST),xyes)
+	@-cp -v $(DTS_PATH)/$(LICHEE_IC)-$(LICHEE_BOARD)-board.dts $(DTS_PATH)/.board-uboot.dts
+else
+	@-cp -v $(DTS_PATH)/$(CONFIG_SYS_CONFIG_NAME)-common-board.dts $(DTS_PATH)/.board-uboot.dts
+endif
 	$(Q)$(MAKE) $(build)=dts dtbs
 
 quiet_cmd_copy = COPY    $@
@@ -963,45 +1021,31 @@ u-boot.bin: u-boot-nodtb.bin FORCE
 	$(call if_changed,copy)
 endif
 
-TARGET_BIN_DIR ?= target/allwinner/$(TARGET_PLATFORM)-common/bin
-LONGAN_BIN_DIR ?= device/config/chips/$(TARGET_PLATFORM)/bin
+TARGET_BIN_DIR ?= device/config/chips/$(TARGET_PLATFORM)/bin
+
 u-boot-$(CONFIG_SYS_CONFIG_NAME).bin:   u-boot.bin
 	@cp -v $<    $@
 ifeq ($(CONFIG_SUNXI_NOR_IMG),y)
 ifeq ($(TARGET_BUILD_VARIANT),tina)
-	@if [ -d $(objtree)/../../../device/config/chips/$(TARGET_PLATFORM)/bin ] ; then \
-		cp -v $@ $(objtree)/../../../device/config/chips/$(TARGET_PLATFORM)/bin/u-boot-spinor-$(CONFIG_SYS_CONFIG_NAME).bin; \
-	elif [ -d $(objtree)/../../../target/allwinner/$(TARGET_PLATFORM)-common/bin ] ; then\
-		cp -v $@ $(objtree)/../../../target/allwinner/$(TARGET_PLATFORM)-common/bin/u-boot-spinor-$(CONFIG_SYS_CONFIG_NAME).bin; \
-	fi
+	@cp -v $@ $(objtree)/../../../$(TARGET_BIN_DIR)/u-boot-spinor-$(CONFIG_SYS_CONFIG_NAME).bin;
 else
 	@-if [ "x$(LICHEE_BUSSINESS)" != "x" ];then \
 		cp -v $@ $(LICHEE_CHIP_CONFIG_DIR)/$(LICHEE_BUSSINESS)/bin/u-boot-spinor-$(CONFIG_SYS_CONFIG_NAME).bin; \
 	else \
-		if [ -d $(objtree)/../../../$(TARGET_BIN_DIR) ]; then \
-			cp -v $@ $(objtree)/../../../$(TARGET_BIN_DIR)/$@; \
-		else \
-			cp -v $@ $(LICHEE_CHIP_CONFIG_DIR)/bin/u-boot-spinor-$(CONFIG_SYS_CONFIG_NAME).bin;\
-		fi; \
+		cp -v $@ $(LICHEE_CHIP_CONFIG_DIR)/bin/u-boot-spinor-$(CONFIG_SYS_CONFIG_NAME).bin;\
 	fi
+	@-cp -v $@ $(LICHEE_PLAT_OUT)/u-boot-spinor-$(CONFIG_SYS_CONFIG_NAME).bin;
 endif
 else
 ifeq ($(TARGET_BUILD_VARIANT),tina)
-	@if [ -d $(objtree)/../../../device/config/chips/$(TARGET_PLATFORM)/bin ] ; then \
-		cp -v $@ $(objtree)/../../../device/config/chips/$(TARGET_PLATFORM)/bin/$@; \
-	elif [ -d $(objtree)/../../../target/allwinner/$(TARGET_PLATFORM)-common/bin ] ; then\
-		cp -v $@ $(objtree)/../../../target/allwinner/$(TARGET_PLATFORM)-common/bin/$@; \
-	fi
+	@cp -v $@ $(objtree)/../../../$(TARGET_BIN_DIR)/$@
 else
 	@-if [ "x$(LICHEE_BUSSINESS)" != "x" ];then\
 		cp -v $@ $(LICHEE_CHIP_CONFIG_DIR)/$(LICHEE_BUSSINESS)/bin/$@; \
 	else \
-		if [ -d $(objtree)/../../../$(TARGET_BIN_DIR) ]; then \
-			cp -v $@ $(objtree)/../../../$(TARGET_BIN_DIR)/$@; \
-		else \
-			cp -v $@ $(LICHEE_CHIP_CONFIG_DIR)/bin/$@; \
-		fi; \
+		cp -v $@ $(LICHEE_CHIP_CONFIG_DIR)/bin/$@; \
 	fi
+	@-cp -v $@ $(LICHEE_PLAT_OUT)/$@;
 endif
 endif
 
@@ -1497,11 +1541,23 @@ prepare: prepare0
 # ---------------------------------------------------------------------------
 
 define filechk_version.h
-	(echo \#define PLAIN_VERSION \"$(UBOOTRELEASE)\"; \
+	(echo \#define PLAIN_VERSION \"$(UBOOTRELEASE)$(CONFIG_DIRTY)\"; \
 	echo \#define U_BOOT_VERSION \"U-Boot \" PLAIN_VERSION; \
 	echo \#define CC_VERSION_STRING \"$$(LC_ALL=C $(CC) --version | head -n 1)\"; \
 	echo \#define LD_VERSION_STRING \"$$(LC_ALL=C $(LD) --version | head -n 1)\"; )
 endef
+
+DIRTY:=$(shell echo `git describe --dirty|grep -o dirty$$`)
+DEF_DOT_CONFIG_HASH=$(shell echo `cat .tmp_config_from_defconfig.o.md5sum`)
+CUR_DOT_CONFIG_HASH=$(shell echo `md5sum .config| awk '{printf $$1}'`)
+CONFIG_DIRTY:=$(shell if [ $(DEF_DOT_CONFIG_HASH) = $(CUR_DOT_CONFIG_HASH) ]; \
+	then echo ""; \
+	else echo "-config-dirty"; \
+	fi)
+ifeq ($(DIRTY)$(CONFIG_DIRTY),)
+	export SOURCE_DATE_EPOCH=$(shell echo `git log -1 --pretty=%ct`)
+endif
+
 
 # The SOURCE_DATE_EPOCH mechanism requires a date that behaves like GNU date.
 # The BSD date on the other hand behaves different and would produce errors

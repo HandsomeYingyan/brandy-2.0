@@ -11,6 +11,7 @@ obj-y += help.o
 obj-y += version.o
 
 # command
+obj-$(CONFIG_CMD_AB_SELECT) += ab_select.o
 obj-$(CONFIG_CMD_AES) += aes.o
 obj-$(CONFIG_CMD_ARMFLASH) += armflash.o
 obj-y += blk_common.o
@@ -156,14 +157,19 @@ obj-$(CONFIG_CMD_SUNXI_SPRITE) += sunxi_sprite.o
 obj-$(CONFIG_CMD_SUNXI_FLASH) += sunxi_flash.o
 obj-$(CONFIG_CMD_SUNXI_DMA) += sunxi_dma.o
 obj-$(CONFIG_CMD_SUNXI_EFEX) += sunxi_efex.o
-ifdef CONFIG_SUNXI_SECURE_STORAGE
+obj-$(CONFIG_CMD_SUNXI_NAND) += sunxi_nand.o
 obj-$(CONFIG_CMD_SUNXI_BURN) += sunxi_burn.o
+obj-$(CONFIG_CMD_SUNXI_BOOTR) += sunxi_bootr.o
+ifdef CONFIG_SUNXI_SECURE_STORAGE
 obj-y += sunxi_svudata.o
 endif
 obj-$(CONFIG_CMD_SUNXI_AUTO_FEL) += sunxi_auto_fel.o
+
 obj-$(CONFIG_CMD_PWM_LED) += cmd_pwm_led.o
 
 obj-$(CONFIG_CMD_SUNXI_MEMTEST) += sunxi_memtest.o ./memtest/mem_tests.o
+
+obj-$(CONFIG_CMD_SUNXI_CE_TEST) += sunxi_ce_test.o
 
 obj-$(CONFIG_X86) += x86/
 endif # !CONFIG_SPL_BUILD

@@ -18,7 +18,7 @@
  */
 
 #define RAWNAND_DBG(fmt, ...) \
-	pr_err("[ND]" fmt, ##__VA_ARGS__)
+	pr_debug("[ND]" fmt, ##__VA_ARGS__)
 #define RAWNAND_ERR(fmt, ...) \
 	pr_err("[NE]" fmt, ##__VA_ARGS__)
 #else

@@ -14,7 +14,7 @@ choice
 	prompt "Boot count device"
 	default BOOTCOUNT_AM33XX if AM33XX || SOC_DA8XX
 	default BOOTCOUNT_AT91 if AT91SAM9XE
-	default BOOTCOUNT_RTC if ARCH_SUNXI
+	default BOOTCOUNT_ENV if ARCH_SUNXI
 	default BOOTCOUNT_GENERIC
 
 config BOOTCOUNT_GENERIC

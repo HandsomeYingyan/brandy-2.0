@@ -159,9 +159,15 @@ int de_dcsc_init(disp_bsp_init_para *para)
 	for (screen_id = 0; screen_id < device_num; screen_id++) {
 		is_in_smbl[screen_id] = de_feat_is_support_smbl(screen_id);
 
+#if defined(CONFIG_INDEPENDENT_DE)
+		base = para->reg_base[DISP_MOD_DE + screen_id]
+		    + (screen_id + 1) * 0x00100000 + DCSC_OFST;
+		if (screen_id)
+			base = base - 0x00100000;
+#else
 		base = para->reg_base[DISP_MOD_DE]
 		    + (screen_id + 1) * 0x00100000 + DCSC_OFST;
-
+#endif
 		__inf("sel %d, Dcsc_base=0x%p\n", screen_id, (void *)base);
 
 		if (is_in_smbl[screen_id]) {

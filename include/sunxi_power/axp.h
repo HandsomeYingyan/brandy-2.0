@@ -43,10 +43,12 @@ enum sunxi_axp_type {
 struct sunxi_pmu_dev_t {
 const char *pmu_name;
 int (*probe)(void); /* matches chipid*/
+int (*get_info)(char *name, unsigned char *chipid); /*get axp info*/
 int (*set_voltage)(char *name, uint vol_value, uint onoff); /*Set a certain power, voltage value. */
 int (*get_voltage)(char *name); /*Read a certain power, voltage value */
 int (*set_power_off)(void); /*Set shutdown*/
 int (*set_sys_mode)(int status); /*Sets the state of the next mode */
+int (*set_dcdc_mode)(const char *name, int mode); /*force dcdc mode in pwm or not */
 int (*get_sys_mode)(void); /*Get the current state*/
 int (*get_key_irq)(void); /*Get the button length interrupt*/
 int (*set_bus_vol_limit)(int vol_value); /*Set limit total voltage*/
@@ -72,6 +74,7 @@ int (*get_battery_probe)(void); /*Get the battery presence flag*/
 int (*set_vbus_current_limit)(int current); /*limit total current*/
 int (*get_vbus_current_limit)(void); /*Get current limit current*/
 int (*set_charge_current_limit)(int current); /*Set the current charge size*/
+int (*reset_capacity)(void);
 unsigned char (*get_reg_value)(unsigned char reg_addr);/*get register value*/
 unsigned char (*set_reg_value)(unsigned char reg_addr, unsigned char reg_value);/*set register value*/
 };
@@ -79,11 +82,20 @@ unsigned char (*set_reg_value)(unsigned char reg_addr, unsigned char reg_value);
 #define U_BOOT_AXP_BMU_INIT(_name)                                             \
 	ll_entry_declare(struct sunxi_bmu_dev_t, _name, bmu)
 
+#define AXP_BOOT_SOURCE_BUTTON         0
+#define AXP_BOOT_SOURCE_IRQ_LOW                1
+#define AXP_BOOT_SOURCE_VBUS_USB       2
+#define AXP_BOOT_SOURCE_CHARGER                3
+#define AXP_BOOT_SOURCE_BATTERY                4
+
+
 int pmu_probe(void);
+int pmu_get_info(char *name, unsigned char *chipid);
 int pmu_set_voltage(char *name, uint vol_value, uint onoff);
 int pmu_get_voltage(char *name);
 int pmu_set_power_off(void);
 int pmu_set_sys_mode(int status);
+int pmu_set_dcdc_mode(const char *name, int mode);
 int pmu_get_sys_mode(void);
 int pmu_get_key_irq(void);
 int pmu_set_bus_vol_limit(int vol_value);
@@ -101,6 +113,7 @@ int bmu_get_battery_probe(void);
 int bmu_set_vbus_current_limit(int current);
 int bmu_get_vbus_current_limit(void);
 int bmu_set_charge_current_limit(int current);
+int bmu_reset_capacity(void);
 unsigned char bmu_get_reg_value(unsigned char reg_addr);
 unsigned char bmu_set_reg_value(unsigned char reg_addr, unsigned char reg_value);
 

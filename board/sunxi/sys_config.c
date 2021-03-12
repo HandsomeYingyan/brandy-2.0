@@ -33,8 +33,8 @@ DECLARE_GLOBAL_DATA_PTR;
 //#define GPIO_REG_READ(reg)              smc_readl((reg))
 //#define GPIO_REG_WRITE(reg, value)      smc_writel((value), (reg))
 
-#define GPIO_REG_READ(reg)              (readl((ulong)(reg)))
-#define GPIO_REG_WRITE(reg, value)      (writel((value), (ulong)(reg)))
+#define GPIO_REG_READ(reg)              (readl((reg)))
+#define GPIO_REG_WRITE(reg, value)      (writel((value), (reg)))
 
 
 /**#############################################################################################################
@@ -42,35 +42,79 @@ DECLARE_GLOBAL_DATA_PTR;
  *                           GPIO(PIN) Operations
  *
 -##############################################################################################################*/
-#define _PIO_REG_CFG(n, i)               ((volatile unsigned int *)( SUNXI_PIO_BASE + ((n)-1)*0x24 + ((i)<<2) + 0x00))
-#define _PIO_REG_DLEVEL(n, i)            ((volatile unsigned int *)( SUNXI_PIO_BASE + ((n)-1)*0x24 + ((i)<<2) + 0x14))
-#define _PIO_REG_PULL(n, i)              ((volatile unsigned int *)( SUNXI_PIO_BASE + ((n)-1)*0x24 + ((i)<<2) + 0x1C))
-#define _PIO_REG_DATA(n)                 ((volatile unsigned int *)( SUNXI_PIO_BASE + ((n)-1)*0x24 + 0x10))
-
-#define _PIO_REG_CFG_VALUE(n, i)          readl( SUNXI_PIO_BASE + ((n)-1)*0x24 + ((i)<<2) + 0x00)
-#define _PIO_REG_DLEVEL_VALUE(n, i)       readl( SUNXI_PIO_BASE + ((n)-1)*0x24 + ((i)<<2) + 0x14)
-#define _PIO_REG_PULL_VALUE(n, i)         readl( SUNXI_PIO_BASE + ((n)-1)*0x24 + ((i)<<2) + 0x1C)
-#define _PIO_REG_DATA_VALUE(n)            readl( SUNXI_PIO_BASE + ((n)-1)*0x24 + 0x10)
-#define _PIO_REG_BASE(n)                    ((volatile unsigned int *)(SUNXI_PIO_BASE +((n)-1)*24))
-
-//Temporarily to modify the XR829 wifi interrupt sampling rate
-#ifdef CONFIG_SUNXI_GPIO_INT_DEB
-#define PIO_REG_INT_DEB(n)              ((volatile unsigned int *)(SUNXI_PIO_BASE + 0x200 + ((n)-1)*0x20 + 0x18))
-#define PIO_REG_INT_DEB_VALUE(n)        readl(SUNXI_PIO_BASE + 0x200 + ((n)-1)*0x20 + 0x18)
+#ifdef CONFIG_SUNXI_GPIO_V2
+#define PIOC_REG_o_CFG0                 (0x00)
+#define PIOC_REG_o_CFG1                 (0x04)
+#define PIOC_REG_o_CFG2                 (0x08)
+#define PIOC_REG_o_CFG3                 (0x0C)
+#define PIOC_REG_o_DATA                 (0x10)
+#define PIOC_REG_o_DRV0                 (0x14)
+#define PIOC_REG_o_DRV1                 (0x18)
+#define PIOC_REG_o_DRV2                 (0x1C)
+#define PIOC_REG_o_DRV3                 (0x20)
+#define PIOC_REG_o_PUL0                 (0x24)
+#define PIOC_REG_o_PUL1                 (0x28)
+#define PIOC_o_OFFSET										(0x30)
+#else
+#define PIOC_REG_o_CFG0                 (0x00)
+#define PIOC_REG_o_CFG1                 (0x04)
+#define PIOC_REG_o_CFG2                 (0x08)
+#define PIOC_REG_o_CFG3                 (0x0C)
+#define PIOC_REG_o_DATA                 (0x10)
+#define PIOC_REG_o_DRV0                 (0x14)
+#define PIOC_REG_o_DRV1                 (0x18)
+#define PIOC_REG_o_PUL0                 (0x1C)
+#define PIOC_REG_o_PUL1                 (0x20)
+#define PIOC_o_OFFSET										(0x24)
 #endif
 
-#ifdef SUNXI_RPIO_BASE
-#define _R_PIO_REG_CFG(n, i)               ((volatile unsigned int *)( SUNXI_RPIO_BASE + ((n)-12)*0x24 + ((i)<<2) + 0x00))
-#define _R_PIO_REG_DLEVEL(n, i)            ((volatile unsigned int *)( SUNXI_RPIO_BASE + ((n)-12)*0x24 + ((i)<<2) + 0x14))
-#define _R_PIO_REG_PULL(n, i)              ((volatile unsigned int *)( SUNXI_RPIO_BASE + ((n)-12)*0x24 + ((i)<<2) + 0x1C))
-#define _R_PIO_REG_DATA(n)                 ((volatile unsigned int *)( SUNXI_RPIO_BASE + ((n)-12)*0x24 + 0x10))
+#define _PIO_REG_CFG(n, i) \
+		((volatile unsigned int *)((unsigned long)SUNXI_PIO_BASE + \
+		((n)-1) * PIOC_o_OFFSET + ((i)<<2) + PIOC_REG_o_CFG0))
+#define _PIO_REG_DLEVEL(n, i) \
+		((volatile unsigned int *)((unsigned long)SUNXI_PIO_BASE + \
+		((n)-1) * PIOC_o_OFFSET + ((i)<<2) + PIOC_REG_o_DRV0))
+#define _PIO_REG_PULL(n, i) \
+		((volatile unsigned int *)((unsigned long)SUNXI_PIO_BASE + \
+		((n)-1) * PIOC_o_OFFSET + ((i)<<2) + PIOC_REG_o_PUL0))
+#define _PIO_REG_DATA(n) \
+		((volatile unsigned int *)((unsigned long)SUNXI_PIO_BASE + \
+		((n)-1) * PIOC_o_OFFSET + PIOC_REG_o_DATA))
 
-#define _R_PIO_REG_CFG_VALUE(n, i)          readl( SUNXI_RPIO_BASE + ((n)-12)*0x24 + ((i)<<2) + 0x00)
-#define _R_PIO_REG_DLEVEL_VALUE(n, i)       readl( SUNXI_RPIO_BASE + ((n)-12)*0x24 + ((i)<<2) + 0x14)
-#define _R_PIO_REG_PULL_VALUE(n, i)         readl( SUNXI_RPIO_BASE + ((n)-12)*0x24 + ((i)<<2) + 0x1C)
-#define _R_PIO_REG_DATA_VALUE(n)            readl( SUNXI_RPIO_BASE + ((n)-12)*0x24 + 0x10)
-#define _R_PIO_REG_BASE(n)                    ((volatile unsigned int *)(SUNXI_RPIO_BASE +((n)-12)*24))
+#define _PIO_REG_CFG_VALUE(n, i) \
+		readl(IOMEM_ADDR(SUNXI_PIO_BASE + ((n)-1) * PIOC_o_OFFSET + ((i)<<2) + PIOC_REG_o_CFG0))
+#define _PIO_REG_DLEVEL_VALUE(n, i) \
+		readl(IOMEM_ADDR(SUNXI_PIO_BASE + ((n)-1) * PIOC_o_OFFSET + ((i)<<2) + PIOC_REG_o_DRV0))
+#define _PIO_REG_PULL_VALUE(n, i) \
+		readl(IOMEM_ADDR(SUNXI_PIO_BASE + ((n)-1) * PIOC_o_OFFSET + ((i)<<2) + PIOC_REG_o_PUL0))
+#define _PIO_REG_DATA_VALUE(n) \
+		readl(IOMEM_ADDR(SUNXI_PIO_BASE + ((n)-1) * PIOC_o_OFFSET + PIOC_REG_o_DATA))
+#define _PIO_REG_BASE(n) \
+		((volatile unsigned int *)((unsigned long)SUNXI_PIO_BASE +((n)-1) * PIOC_o_OFFSET))
 
+#ifdef SUNXI_R_PIO_BASE
+#define _R_PIO_REG_CFG(n, i)                                                   \
+	((volatile unsigned int *)((unsigned long)SUNXI_R_PIO_BASE + ((n)-12) * PIOC_o_OFFSET +        \
+				   ((i) << 2) + PIOC_REG_o_CFG0))
+#define _R_PIO_REG_DLEVEL(n, i)                                                \
+	((volatile unsigned int *)((unsigned long)SUNXI_R_PIO_BASE + ((n)-12) * PIOC_o_OFFSET +        \
+				   ((i) << 2) + PIOC_REG_o_DRV0))
+#define _R_PIO_REG_PULL(n, i)                                                  \
+	((volatile unsigned int *)((unsigned long)SUNXI_R_PIO_BASE + ((n)-12) * PIOC_o_OFFSET +        \
+				   ((i) << 2) + PIOC_REG_o_PUL0))
+#define _R_PIO_REG_DATA(n)                                                     \
+	((volatile unsigned int *)((unsigned long)SUNXI_R_PIO_BASE + ((n)-12) * PIOC_o_OFFSET + PIOC_REG_o_DATA))
+
+#define _R_PIO_REG_CFG_VALUE(n, i)                                             \
+		readl(IOMEM_ADDR(SUNXI_R_PIO_BASE + ((n)-12) * PIOC_o_OFFSET + ((i) << 2) + PIOC_REG_o_CFG0))
+#define _R_PIO_REG_DLEVEL_VALUE(n, i)                                          \
+		readl(IOMEM_ADDR(SUNXI_R_PIO_BASE + ((n)-12) * PIOC_o_OFFSET + ((i) << 2) + PIOC_REG_o_DRV0))
+#define _R_PIO_REG_PULL_VALUE(n, i)                                            \
+		readl(IOMEM_ADDR(SUNXI_R_PIO_BASE + ((n)-12) * PIOC_o_OFFSET + ((i) << 2) + PIOC_REG_o_PUL0))
+#define _R_PIO_REG_DATA_VALUE(n)                                               \
+		readl(IOMEM_ADDR(SUNXI_R_PIO_BASE + ((n)-12) * PIOC_o_OFFSET + PIOC_REG_o_DATA))
+#define _R_PIO_REG_BASE(n)                                                     \
+		((volatile unsigned int *)((unsigned long)SUNXI_R_PIO_BASE + ((n)-12) * PIOC_o_OFFSET))
 
 volatile void* PIO_REG_CFG(int port, int port_num)
 {
@@ -1647,7 +1691,7 @@ int fdt_get_one_gpio_by_offset(int nodeoffset, const char* prop_name,user_gpio_s
 			gpio_list->pull,
 			gpio_list->drv_level,
 			gpio_list->data);
-	return 0;
+	return ret;
 
 }
 
@@ -1715,7 +1759,7 @@ int fdt_set_normal_gpio(user_gpio_set_t  *gpio_set, int gpio_count)
 	return gpio_request_early(&gpio_set,gpio_count,1);
 }
 
-int script_parser_fetch(char *node_path, char *prop_name, int value[], int count)
+int script_parser_fetch(char *node_path, char *prop_name, int value[], int def_val)
 {
 	int nodeoffset; 
 	int ret;
@@ -1724,58 +1768,16 @@ int script_parser_fetch(char *node_path, char *prop_name, int value[], int count
 	nodeoffset = fdt_path_offset (working_fdt, node_path );
 	if(nodeoffset < 0) {
 		debug ("fdt err returned %s\n",fdt_strerror(nodeoffset));
+		value[0] = def_val;
 		return -1;
 	}
 
 	ret = fdt_getprop_u32(working_fdt,nodeoffset, prop_name, (u32*)value);
 	if(ret < 0 ) {
 		debug("%s :%s|%s err returned %s\n",__func__,node_path,prop_name,fdt_strerror(ret));
+		value[0] = def_val;
 		return -1;
 	}
 
 	return 0;
 }
-
-//Temporarily to modify the XR829 wifi interrupt sampling rate
-//@n:group number (PA~1 PB~2 PC~3 ... PH~8)
-//@value:0/1 (0:32Khz 1:24Mhz)
-#ifdef CONFIG_SUNXI_GPIO_INT_DEB
-int fdt_get_wlan_status(void)
-{
-	int nodeoffset;
-	char *status = NULL;
-	int ret;
-
-	nodeoffset = fdt_path_offset(working_fdt, "/soc/wlan");
-	if (nodeoffset < 0) {
-		printf ("fdt err returned %s\n", fdt_strerror(nodeoffset));
-		return -1;
-	}
-
-	ret = fdt_getprop_string(working_fdt, nodeoffset, "status", &status);
-	if (ret < 0) {
-		printf("%s :/soc/wlan|status err returned %s\n", __func__, fdt_strerror(ret));
-		return -1;
-	}
-	if (!strcmp(status, "okay")) {
-		return 1;
-	} else if (!strcmp(status, "disabled")) {
-		return 0;
-	} else {
-		return -1;
-	}
-}
-
-void int_deb_set_gpio(int n, int value)
-{
-	__u32 register_value = PIO_REG_INT_DEB_VALUE(n);
-	if (value == 1) {
-		register_value |= 0x1;
-		GPIO_REG_WRITE(PIO_REG_INT_DEB(n), register_value);
-	}
-	if (value == 0) {
-		register_value &= (~(0x1));
-		GPIO_REG_WRITE(PIO_REG_INT_DEB(n), register_value);
-	}
-}
-#endif

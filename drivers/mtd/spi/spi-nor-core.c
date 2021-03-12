@@ -181,7 +181,8 @@ static int read_fsr(struct spi_nor *nor)
  * location. Return the configuration register value.
  * Returns negative if error occurred.
  */
-#if defined(CONFIG_SPI_FLASH_SPANSION) || defined(CONFIG_SPI_FLASH_WINBOND) || defined(CONFIG_SPI_FLASH_PUYA)
+#if defined(CONFIG_SPI_FLASH_SPANSION) || defined(CONFIG_SPI_FLASH_WINBOND)   \
+    || defined(CONFIG_SPI_FLASH_PUYA) || defined(CONFIG_SPI_FLASH_GIGADEVICE)
 static int read_cr(struct spi_nor *nor)
 {
 	int ret;
@@ -206,6 +207,7 @@ static int write_sr(struct spi_nor *nor, u8 val)
 	nor->cmd_buf[0] = val;
 	return nor->write_reg(nor, SPINOR_OP_WRSR, nor->cmd_buf, 1);
 }
+
 
 /*
  * Set write enable latch with Write Enable command.
@@ -305,6 +307,12 @@ static void spi_nor_set_4byte_opcodes(struct spi_nor *nor,
 	nor->erase_opcode = spi_nor_convert_3to4_erase(nor->erase_opcode);
 }
 #endif /* !CONFIG_SPI_FLASH_BAR */
+/* Reset enable(66h) and Reset Device(99h)*/
+void spi_nor_reset_device(struct spi_nor *nor)
+{
+	nor->write_reg(nor, SPINOR_OP_RESTEN, NULL, 0);
+	nor->write_reg(nor, SPINOR_OP_RESET, NULL, 0);
+}
 
 /* Enable/disable 4-byte addressing mode. */
 static int set_4byte(struct spi_nor *nor, const struct flash_info *info,
@@ -1261,6 +1269,7 @@ static int spansion_read_cr_quad_enable(struct spi_nor *nor)
 	return 0;
 }
 
+
 #if CONFIG_IS_ENABLED(SPI_FLASH_SFDP_SUPPORT)
 /**
  * spansion_no_read_cr_quad_enable() - set QE bit in Configuration Register.
@@ -1294,6 +1303,41 @@ static int spansion_no_read_cr_quad_enable(struct spi_nor *nor)
 
 #endif /* CONFIG_SPI_FLASH_SFDP_SUPPORT */
 #endif /* CONFIG_SPI_FLASH_SPANSION */
+
+#ifdef CONFIG_SPI_FLASH_GIGADEVICE
+static int write_sr_gd(struct spi_nor *nor, u8 val)
+{
+	nor->cmd_buf[0] = val;
+	return nor->write_reg(nor, SPINOR_OP_WRSR2, nor->cmd_buf, 1);
+}
+
+static int gd_read_cr_quad_enable(struct spi_nor *nor)
+{
+	int ret, val;
+
+	val = read_sr(nor);
+	if (val < 0)
+		return val;
+	if (val & CR_QUAD_EN_GD)
+		return 0;
+
+	write_enable(nor);
+
+	write_sr_gd(nor, val | CR_QUAD_EN_GD);
+
+	ret = spi_nor_wait_till_ready(nor);
+	if (ret)
+		return ret;
+
+	ret = read_cr(nor);
+	if (!(ret > 0 && (ret & CR_QUAD_EN_GD))) {
+		dev_err(nor->dev, "Gd Quad bit not set\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+#endif
 
 struct spi_nor_read_command {
 	u8			num_mode_clocks;
@@ -2003,17 +2047,28 @@ static int spi_nor_init_params(struct spi_nor *nor,
 	if (params->hwcaps.mask & (SNOR_HWCAPS_READ_QUAD |
 				   SNOR_HWCAPS_PP_QUAD)) {
 		switch (JEDEC_MFR(info)) {
-#ifdef CONFIG_SPI_FLASH_MACRONIX
+#if defined(CONFIG_SPI_FLASH_MACRONIX) || defined(CONFIG_SPI_FLASH_XMC)
 		case SNOR_MFR_MACRONIX:
+		case SNOR_MFR_XMC:
+			//SNOR_MFR_MICRON
+			if (info->id[1] >> 4 == 'b' && JEDEC_MFR(info) == SNOR_MFR_XMC) //because XMC and MICRON id[0] equal
+				return 0;
 			params->quad_enable = macronix_quad_enable;
 			break;
 #endif
-		case SNOR_MFR_ST:
+#if defined(CONFIG_SPI_FLASH_GIGADEVICE) || defined(CONFIG_SPI_FLASH_ADESTO)
+		case SNOR_MFR_GIGADEVICE:
+		case SNOR_MFR_ADESTO:
+			params->quad_enable = gd_read_cr_quad_enable;
+			break;
+#endif
+//		case SNOR_MFR_ST:
 		case SNOR_MFR_MICRON:
 			break;
 
 		default:
-#if defined(CONFIG_SPI_FLASH_SPANSION) || defined(CONFIG_SPI_FLASH_WINBOND) || defined(CONFIG_SPI_FLASH_PUYA)
+#if defined(CONFIG_SPI_FLASH_SPANSION) || defined(CONFIG_SPI_FLASH_WINBOND) || defined(CONFIG_SPI_FLASH_PUYA) \
+				|| defined(CONFIG_SPI_FLASH_FM) || defined(CONFIG_SPI_FLASH_XT)
 			/* Kept only for backward compatibility purpose. */
 			params->quad_enable = spansion_read_cr_quad_enable;
 #endif
@@ -2405,7 +2460,6 @@ int spi_nor_scan(struct spi_nor *nor)
 			nor->addr_width);
 		return -EINVAL;
 	}
-
 	/* Send all the required SPI flash commands to initialize device */
 	nor->info = info;
 	ret = spi_nor_init(nor);

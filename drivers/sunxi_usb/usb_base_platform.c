@@ -23,7 +23,11 @@
  */
 #include "usb_base.h"
 #include <scsi.h>
+#ifdef CONFIG_ARM
 #include <asm/arch/gic.h>
+#elif CONFIG_RISCV
+#include <asm/arch/plic.h>
+#endif
 #include <asm/arch/timer.h>
 //#include <sys_partition.h>
 #include <sunxi_board.h>
@@ -313,7 +317,7 @@ int sunxi_usb_init(int delaytime)
 	//内存资源
 	memset(&sunxi_ubuf, 0, sizeof(sunxi_ubuf_t));
 
-	sunxi_ubuf.rx_base_buffer = (uchar *)malloc_align(1024, 64);
+	sunxi_ubuf.rx_base_buffer = (uchar *)memalign(CONFIG_SYS_CACHELINE_SIZE, 1024);
 	if(!sunxi_ubuf.rx_base_buffer)
 	{
 		printf("%s:alloc memory  fail\n", __func__);
@@ -369,15 +373,15 @@ int sunxi_usb_init(int delaytime)
 	irq_install_handler(AW_IRQ_USB_OTG, sunxi_usb_irq, NULL);
 	irq_enable(AW_IRQ_USB_OTG);
 	/* sun8iw10p1 spec default value is not correct, bit 1 should be  0 */
-	reg_val = readl(SUNXI_USBOTG_BASE+USBC_REG_o_PHYCTL);
+	reg_val = readl((const volatile void __iomem *)(SUNXI_USBOTG_BASE+USBC_REG_o_PHYCTL));
 	reg_val &= ~(0x01<<1);
-	writel(reg_val, SUNXI_USBOTG_BASE+USBC_REG_o_PHYCTL);
+	writel(reg_val, (volatile void __iomem *)(SUNXI_USBOTG_BASE+USBC_REG_o_PHYCTL));
 
-#if defined(CONFIG_SUNXI_NCAT)
-	reg_val = readl(SUNXI_USBOTG_BASE+USBC_REG_o_PHYCTL);
+#if defined(CONFIG_SUNXI_NCAT) || defined(CONFIG_SUNXI_NCAT_V2)
+	reg_val = readl((const volatile void __iomem *)(SUNXI_USBOTG_BASE+USBC_REG_o_PHYCTL));
 	reg_val &= ~(0x01<<USBC_PHY_CTL_SIDDQ);
 	reg_val |= 0x01<<USBC_PHY_CTL_VBUSVLDEXT;
-	writel(reg_val, SUNXI_USBOTG_BASE+USBC_REG_o_PHYCTL);
+	writel(reg_val, (volatile void __iomem *)(SUNXI_USBOTG_BASE+USBC_REG_o_PHYCTL));
 #endif
 	otg_phy_config();
 
@@ -398,7 +402,7 @@ __sunxi_usb_init_fail:
 	}
 	if(sunxi_ubuf.rx_base_buffer)
 	{
-		free_align(sunxi_ubuf.rx_base_buffer);
+		free(sunxi_ubuf.rx_base_buffer);
 	}
 
 	return -1;
@@ -435,7 +439,7 @@ int sunxi_usb_exit(void)
 	}
 	if(sunxi_ubuf.rx_base_buffer)
 	{
-		free_align(sunxi_ubuf.rx_base_buffer);
+		free(sunxi_ubuf.rx_base_buffer);
 	}
 	USBC_close_otg(sunxi_udc_source.usbc_hd);
 	usb_close_clock();
@@ -1458,8 +1462,6 @@ static int eptx_send_op(void)
 void sunxi_usb_main_loop(int delaytime)
 {
 	int ret;
-	int need_exit_usb = 1;
-	int sprite_keep_usb = 0;
 
 	if(sunxi_usb_init(delaytime))
 	{
@@ -1485,22 +1487,8 @@ void sunxi_usb_main_loop(int delaytime)
 		}
 	}
 
-
-	if (get_boot_work_mode() == WORK_MODE_USB_PRODUCT) {
-		script_parser_fetch("/soc/platform", "sprite_keep_usb",
-				&sprite_keep_usb, 0);
-		if (sprite_keep_usb == 1) {
-			/* keep usb regs after sprite, then PC tools can detect usb plug out */
-			need_exit_usb = 0;
-			printf("sprite_keep_usb = 1, keep usb regs when exit usb\n");
-		}
-	};
-
 	printf("exit usb\n");
-
-	if (need_exit_usb)
-		sunxi_usb_exit();
-
+	sunxi_usb_exit();
 	sunxi_update_subsequent_processing(ret);
 
 	return ;

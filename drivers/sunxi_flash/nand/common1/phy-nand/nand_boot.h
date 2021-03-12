@@ -70,8 +70,8 @@ struct _boot_info {
 	unsigned int physic_block_reserved;
 	unsigned int nand_ddrtype;
 	unsigned int ddr_timing_cfg;
-	unsigned int enable_crc; // ENABLE_CRC_MAGIC
-	unsigned int nouse[128 - 13];
+	//unsigned int enable_crc; // ENABLE_CRC_MAGIC
+	unsigned int nouse[128 - 12];
 
 	_MBR mbr;			 //4k               offset 0.5k
 	_PARTITION partition;		 //2.5k             offset 4.5k
@@ -125,7 +125,6 @@ int add_len_to_uboot_tail(unsigned int uboot_size);
 int print_physic_info(struct _boot_info *info);
 int physic_info_add_to_uboot_tail(unsigned int *buf_dst, unsigned int uboot_size);
 unsigned int is_uboot_block(unsigned int block, char *uboot_buf);
-int is_physic_info_enable_crc(void);
 int mark_to_disable_crc_when_ota(void);
 int disable_phyinfo_crc_in_buffer(struct _boot_info *phyinfo_buf_tmp);
 extern __u32 get_storage_type(void);

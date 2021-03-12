@@ -450,6 +450,12 @@ s32 de_rtmx_mgr_apply(u32 disp, struct disp_manager_data *data)
 			DE_WRN("invalid config.cs=%d\n", data->config.cs);
 			break;
 		}
+		ctx->output.color_range = data->config.color_range;
+		ctx->output.color_space = de_rtmx_convert_color_space(
+			(enum de_color_space_u)data->config.color_space);
+		ctx->output.eotf = data->config.eotf;
+		ctx->output.data_bits = data->config.data_bits;
+		de_fmt_set_para(disp);
 	}
 
 	if (data->flag & MANAGER_ENABLE_DIRTY) {
@@ -587,7 +593,7 @@ static s32 de_rtmx_chn_data_attr(
 		switch (color_space_u) {
 		case DE_UNDEF:
 		case DE_RESERVED:
-			chn_info->color_range = DE_COLOR_RANGE_0_255;
+			chn_info->color_range = DE_COLOR_RANGE_16_235;
 			if ((lay_info->fb.size[0].width <= 736)
 				&& (lay_info->fb.size[0].height <= 576)) {
 				chn_info->color_space = DE_COLOR_SPACE_BT601;
@@ -597,7 +603,7 @@ static s32 de_rtmx_chn_data_attr(
 			break;
 		case DE_UNDEF_F:
 		case DE_RESERVED_F:
-			chn_info->color_range = DE_COLOR_RANGE_16_235;
+			chn_info->color_range = DE_COLOR_RANGE_0_255;
 			if ((lay_info->fb.size[0].width <= 736)
 				&& (lay_info->fb.size[0].height <= 576)) {
 				chn_info->color_space = DE_COLOR_SPACE_BT601;
@@ -958,7 +964,7 @@ static s32 de_rtmx_chn_layer_apply(u32 disp, u32 chn,
 		de_fbd_atw_disable(disp, chn);
 		de_ovl_apply_lay(disp, chn, pdata, pdata_num);
 	}
-	de_snr_set_para(disp, chn, pdata);
+	de_snr_set_para(disp, chn, pdata, pdata_num);
 
 	if (chn_info->scale_en) {
 		de_vsu_set_para(disp, chn, chn_info);

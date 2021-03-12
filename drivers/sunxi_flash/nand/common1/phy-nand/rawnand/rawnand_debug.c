@@ -661,7 +661,7 @@ block_test_end:
 int nand_phy_block_erase_test(unsigned int chip, unsigned int block)
 {
 	unsigned char spare[64];
-	int i, j, ret;
+	int i, j, ret = 0;
 	int page_size;
 
 	unsigned char *mbuf;

@@ -193,7 +193,6 @@ int nci_add_to_nctri(struct nand_controller_info *nctri, struct nand_chip_info *
 	}
 	nci->nctri_next = node;
 
-	RAWNAND_DBG("nci_add_to_nctri: %d 0x%x\n", node->nctri_chip_no, node);
 	return NAND_OP_TRUE;
 }
 /**
@@ -278,7 +277,7 @@ int init_nci_from_id(struct nand_chip_info *nci, struct sunxi_nand_flash_device 
 	memcpy(nci->id, npi->id, 8);
 
 	nci->npi = npi;
-	nci->opt_phy_op_par = &phy_op_para[npi->option_physic_op_no];
+	nci->opt_phy_op_par = &phy_op_para[npi->cmd_set_no];
 	nci->nfc_init_ddr_info = &def_ddr_info[npi->ddr_info_no];
 
 	nci->blk_cnt_per_chip = npi->die_cnt_per_chip * npi->blk_cnt_per_die;
@@ -312,6 +311,9 @@ int init_nci_from_id(struct nand_chip_info *nci, struct sunxi_nand_flash_device 
 	if (npi->ddr_opt & NAND_VCCQ_1P8V)
 		nand_enable_vccq_1p8v();
 	nci->frequency = npi->access_freq;
+#ifdef FPGA_PLATFORM
+	nci->frequency = 6;
+#endif
 	//if(nci->frequency > 40)
 	//{
 	//    nci->frequency = 40;
@@ -757,6 +759,44 @@ int nand_read_id(struct nand_chip_info *nci, unsigned char *id)
 	ret = ndfc_execute_cmd(nci->nctri, cmd_seq);
 	if (ret) {
 		RAWNAND_ERR("nand_reset_chip, read chip id failed!\n");
+	}
+
+	ndfc_repeat_mode_disable(nci->nctri);
+	nand_disable_chip(nci);
+
+	return ret;
+}
+
+int rawnand_read_parameter_page(struct nand_chip_info *nci, unsigned char *p)
+{
+	int ret = 0;
+	struct _nctri_cmd_seq *cmd_seq = &nci->nctri->nctri_cmd_seq;
+
+	nand_enable_chip(nci);
+	ndfc_repeat_mode_enable(nci->nctri);
+	ndfc_disable_randomize(nci->nctri);
+
+	ndfc_clean_cmd_seq(cmd_seq);
+
+	cmd_seq->cmd_type = CMD_TYPE_NORMAL;
+	cmd_seq->nctri_cmd[0].cmd_valid = 1;
+	cmd_seq->nctri_cmd[0].cmd = CMD_READ_PARAMETER;
+	cmd_seq->nctri_cmd[0].cmd_send = 1;
+	cmd_seq->nctri_cmd[0].cmd_wait_rb = 1;
+
+	cmd_seq->nctri_cmd[0].cmd_acnt = 1;
+	cmd_seq->nctri_cmd[0].cmd_addr[0] = MICRON_ONFI_PARAMETER_ADDR;
+
+	cmd_seq->nctri_cmd[0].cmd_trans_data_nand_bus = 1;
+	cmd_seq->nctri_cmd[0].cmd_swap_data = 1;
+	cmd_seq->nctri_cmd[0].cmd_swap_data_dma = 0;
+	cmd_seq->nctri_cmd[0].cmd_direction = 0; //read
+	cmd_seq->nctri_cmd[0].cmd_mdata_len = REVISION_FEATURES_BLOCK_INFO_PARAMETER_LEN;
+	cmd_seq->nctri_cmd[0].cmd_mdata_addr = p;
+
+	ret = ndfc_execute_cmd(nci->nctri, cmd_seq);
+	if (ret) {
+		RAWNAND_ERR("nand_reset_chip, read chip parameter page failed!\n");
 	}
 
 	ndfc_repeat_mode_disable(nci->nctri);
@@ -1983,33 +2023,30 @@ int nand_wait_all_rb_ready(void)
 	return ret;
 }
 
+
 char *rawnand_get_chip_name(struct nand_chip_info *chip)
 {
-	struct sunxi_nand_flash_device *info = chip->info;
-
+	struct sunxi_nand_flash_device *info = chip->npi;
 	return info->name;
 }
 
 void rawnand_get_chip_id(struct nand_chip_info *chip, unsigned char *id,
 		int cnt)
 {
-	struct sunxi_nand_flash_device *info = chip->info;
-
+	struct sunxi_nand_flash_device *info = chip->npi;
 	memcpy(id, info->id, cnt);
 }
 
 unsigned int rawnand_get_chip_die_cnt(struct nand_chip_info *chip)
 {
-	struct sunxi_nand_flash_device *info = chip->info;
-
+	struct sunxi_nand_flash_device *info = chip->npi;
 	return info->die_cnt_per_chip;
 }
 
 int rawnand_get_chip_page_size(struct nand_chip_info *chip,
 		enum size_type type)
 {
-	struct sunxi_nand_flash_device *info = chip->info;
-
+	struct sunxi_nand_flash_device *info = chip->npi;
 	if (likely(type == SECTOR)) {
 		return info->sect_cnt_per_page;
 	} else if (unlikely(type == BYTE)) {
@@ -2025,8 +2062,7 @@ int rawnand_get_chip_page_size(struct nand_chip_info *chip,
 int rawnand_get_chip_block_size(struct nand_chip_info *chip,
 		enum size_type type)
 {
-	struct sunxi_nand_flash_device *info = chip->info;
-
+	struct sunxi_nand_flash_device *info = chip->npi;
 	if (likely(type == PAGE)) {
 		return info->page_cnt_per_blk;
 	} else if (unlikely(type == SECTOR)) {
@@ -2045,8 +2081,7 @@ int rawnand_get_chip_block_size(struct nand_chip_info *chip,
 int rawnand_get_chip_die_size(struct nand_chip_info *chip,
 		enum size_type type)
 {
-	struct sunxi_nand_flash_device *info = chip->info;
-
+	struct sunxi_nand_flash_device *info = chip->npi;
 	if (likely(type == BLOCK))
 		return info->blk_cnt_per_die;
 	else if (unlikely(type == BYTE))
@@ -2066,24 +2101,102 @@ int rawnand_get_chip_die_size(struct nand_chip_info *chip,
 
 unsigned long long rawnand_get_chip_opt(struct nand_chip_info *chip)
 {
-	struct sunxi_nand_flash_device *info = chip->info;
-
+	struct sunxi_nand_flash_device *info = chip->npi;
 	return info->operation_opt;
+}
+
+unsigned int rawnand_get_chip_ddr_opt(struct nand_chip_info *chip)
+{
+	struct sunxi_nand_flash_device *info = chip->npi;
+	return info->ddr_opt;
 }
 
 unsigned int rawnand_get_chip_ecc_mode(struct nand_chip_info *chip)
 {
-	struct sunxi_nand_flash_device *info = chip->info;
-
+	struct sunxi_nand_flash_device *info = chip->npi;
 	return info->ecc_mode;
 }
 
 unsigned int rawnand_get_chip_freq(struct nand_chip_info *chip)
 {
-	struct sunxi_nand_flash_device *info = chip->info;
-
+	struct sunxi_nand_flash_device *info = chip->npi;
 	return info->access_freq;
 }
+
+
+unsigned int rawnand_get_chip_multi_plane_block_offset(struct nand_chip_info *chip)
+{
+	struct sunxi_nand_flash_device *info = chip->npi;
+	return info->multi_plane_block_offset;
+}
+unsigned int rawnand_get_chip_cnt(struct nand_chip_info *chip)
+{
+	struct nand_controller_info *nctri = chip->nctri;
+	return nctri->chip_cnt;
+}
+
+unsigned int rawnand_get_muti_program_flag(struct nand_chip_info *chip)
+{
+	struct sunxi_nand_flash_device *info = chip->npi;
+
+	return (info->operation_opt & NAND_MULTI_PROGRAM) ? 1 : 0;
+}
+
+unsigned int rawnand_get_super_chip_cnt(struct nand_super_chip_info *schip)
+{
+	if (!g_nssi) {
+		RAWNAND_INFO("rawnand hw not init\n");
+		return 0;
+	}
+
+	return g_nssi->super_chip_cnt;
+}
+
+unsigned int rawnand_get_super_chip_size(struct nand_super_chip_info *schip)
+{
+	if (!schip) {
+		RAWNAND_INFO("rawnand hw not init\n");
+		return 0;
+	}
+		return schip->blk_cnt_per_super_chip;
+}
+
+unsigned int rawnand_get_super_chip_block_size(struct nand_super_chip_info *schip)
+{
+	if (!schip) {
+		RAWNAND_INFO("rawnand hw not init\n");
+		return 0;
+	}
+		return schip->page_cnt_per_super_blk;
+}
+
+unsigned int rawnand_get_super_chip_page_size(struct nand_super_chip_info *schip)
+{
+	if (!schip) {
+		RAWNAND_INFO("rawnand hw not init\n");
+		return 0;
+	}
+		return schip->sector_cnt_per_super_page;
+}
+
+unsigned int rawnand_get_super_chip_page_offset_to_block(struct nand_super_chip_info *schip)
+{
+	if (!schip) {
+		RAWNAND_INFO("rawnand hw not init\n");
+		return 0;
+	}
+		return schip->page_offset_for_next_super_blk;
+}
+
+unsigned int rawnand_get_super_chip_spare_size(struct nand_super_chip_info *schip)
+{
+	if (!schip) {
+		RAWNAND_INFO("rawnand hw not init\n");
+		return 0;
+	}
+		return schip->spare_bytes;
+}
+
 
 /**
  * nand_chip_init: rawnand chip init
@@ -2111,7 +2224,7 @@ static int rawnand_chip_init(struct nand_chip_info *nci, int c)
 		return ERR_NO_14;
 	}
 
-	nand_id_tbl = sunxi_search_id(id);
+	nand_id_tbl = sunxi_search_id(nci, id);
 	if (nand_id_tbl == NULL) {
 		RAWNAND_ERR("rawnand not support chip %d: "
 				"%02x %02x %02x %02x %02x %02x %02x %02x\n",

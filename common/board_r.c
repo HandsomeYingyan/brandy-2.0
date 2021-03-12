@@ -61,14 +61,18 @@
 #ifdef CONFIG_CMD_PWM_LED
 #include <pwm_led.h>
 #endif
-#include <physical_key.h>
+#include <sys_partition.h>
+#include <boot_gui.h>
+#include <sunxi_bmp.h>
+#include <sunxi_logo_display.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
 ulong monitor_flash_len;
 
-#ifdef CONFIG_SUNXI_AUTO_UPDATE
-extern int auto_update_check(void);
+
+#ifdef CONFIG_SUNXI_ROTPK_BURN_ENABLE_BY_TOOL
+extern int sunxi_burn_rotpk(void);
 #endif
 
 __weak int board_flash_wp_on(void)
@@ -161,97 +165,6 @@ static int initr_reloc(void)
 	return 0;
 }
 
-#ifdef CONFIG_SUNXI_USB_DETECT
-extern volatile int sunxi_usb_detect_flag;
-static int sunxi_usb_detect(void)
-{
-	int ret = -1;
-	ulong begin_time= 0, over_time = 0;
-
-	if(sunxi_usb_dev_register(6) < 0) {
-		printf("usb detect fail: not support usb detect \n");
-		return ret;
-	}
-	if(sunxi_usb_init(0)) {
-		printf("%s usb init fail\n", __func__);
-		sunxi_usb_exit();
-		return ret;
-	}
-
-	begin_time = get_timer(0);
-	over_time = 800;
-	while (1) {
-		if (sunxi_usb_detect_flag) {
-			printf("[%s] usb detect ok\n", __func__);
-			ret = 0;
-			break;
-		}
-		if(get_timer(begin_time) > over_time) {
-			printf("overtime\n");
-			printf("usb : no usb exist\n");
-			ret = -1;
-			break;
-		}
-	}
-	sunxi_usb_exit();
-	return ret;
-}
-#endif
-
-void __check_fel_key(u32 max, u32 min, u32 detect_usb)
-{
-	int value = -1;
-	int loop = 5;
-	sunxi_key_init();
-	for (; loop > 0; loop--) {
-		mdelay(2);
-		value = sunxi_key_read();
-		if ((value >= min) && (value <= max)) {
-			printf("get fel_key = %d ,jump to fel\n", value);
-#ifdef CONFIG_SUNXI_USB_DETECT
-			if (detect_usb) {
-				/* detect usb fail, ignore mute key, break to continue boot */
-				if (sunxi_usb_detect() != 0) {
-					printf("No usb detected, continue boot!\n");
-					break;
-				} else {
-					printf("Detect usb ,jump to fel!\n");
-				}
-			}
-#endif
-			rtc_set_fel_flag();
-			reset_cpu(0);
-		}
-	}
-}
-
-int check_fel_key(void)
-{
-	if (get_boot_work_mode() == WORK_MODE_BOOT) {
-		int nodeoffset;
-		int ret = 0;
-		u32 fel_key_max = 0, fel_key_min = 0, detect_usb = 0;
-		nodeoffset = fdt_path_offset(working_fdt, "/soc/fel_key");
-		if (nodeoffset > 0) {
-			ret = fdt_getprop_u32(working_fdt, nodeoffset, "fel_key_max", &fel_key_max);
-			if (ret < 0) {
-				printf("%s:get fel_key_max error\n", __func__);
-				return 0;
-			}
-			ret = fdt_getprop_u32(working_fdt, nodeoffset, "fel_key_min", &fel_key_min);
-			if (ret < 0) {
-				printf("%s:get fel_key_max error\n", __func__);
-				return 0;
-			}
-			ret = fdt_getprop_u32(working_fdt, nodeoffset, "detect_usb", &detect_usb);
-			printf("fel_key = [%u,%u] , detect_usb %s\n",
-					 fel_key_min, fel_key_max, detect_usb? "yes" : "no");
-			__check_fel_key(fel_key_max, fel_key_min, detect_usb);
-		}
-	}
-	return 0;
-}
-
 #ifdef CONFIG_ARM
 
 
@@ -281,7 +194,11 @@ static int initr_reloc_global_data(void)
 #ifdef __ARM__
 	monitor_flash_len = _end - __image_copy_start;
 #elif defined(CONFIG_NDS32) || defined(CONFIG_RISCV)
+#ifdef CONFIG_ARCH_SUNXI
+	monitor_flash_len = (ulong)&_end - (ulong)&__image_copy_start;
+#else
 	monitor_flash_len = (ulong)&_end - (ulong)&_start;
+#endif
 #elif !defined(CONFIG_SANDBOX) && !defined(CONFIG_NIOS2)
 	monitor_flash_len = (ulong)&__init_end - gd->relocaddr;
 #endif
@@ -592,6 +509,11 @@ static int initr_mmc(void)
 static int initr_sunxi_plat(void)
 {
 	__maybe_unused int ret = 0;
+	__maybe_unused int workmode = get_boot_work_mode();
+
+#ifdef CONFIG_CMD_PWM_LED
+	pwm_led_init,
+#endif
 
 #ifdef CONFIG_BOOT_GUI
 	sunxi_early_logo_display();
@@ -601,6 +523,10 @@ static int initr_sunxi_plat(void)
 	do_box_standby();
 #endif
 
+#ifdef CONFIG_ATF_BOX_STANDBY
+	atf_box_standby();
+#endif
+
 #ifdef CONFIG_IR_BOOT_RECOVERY
 	check_ir_boot_recovery();
 #endif
@@ -608,27 +534,81 @@ static int initr_sunxi_plat(void)
 	sunxi_boot_init_gpio();
 #endif
 
-
+#ifdef CONFIG_RECOVERY_KEY
+	check_recovery_key();
+#endif
 	tick_printf("flash init start\n");
 
 #ifdef CONFIG_SUNXI_FLASH
 	ret = sunxi_flash_init_ext();
+	if (ret)
+		return ret;
 #endif
-#ifdef CONFIG_SUNXI_UBIFS
-	int workmode = get_boot_work_mode();
+	if (workmode == WORK_MODE_BOOT) {
+		int sunxi_update_gpt(void);
+		sunxi_update_gpt();
+#ifdef CONFIG_BOOT_GUI
+		void board_bootlogo_display(void);
+		board_bootlogo_display();
+#else
+#ifdef CONFIG_SUNXI_SPINOR_JPEG
+		int sunxi_jpeg_display(const char *filename);
+		sunxi_jpeg_display("bootlogo");
+#endif
+#ifdef CONFIG_SUNXI_SPINOR_BMP
+#if defined(CONFIG_CMD_FAT)
+		fat_read_logo_to_kernel("bootlogo.bmp");
+#else
+		read_bmp_to_kernel("bootlogo");
+#endif
+#endif
+#endif
+		sunxi_probe_partition_map();
+	}
+	return ret;
 
-	if (workmode == WORK_MODE_BOOT && nand_use_ubi()) {
-		ubi_nand_probe_uboot();
-		ubi_nand_attach_mtd();
+#ifdef CONFIG_SUNXI_ROTPK_BURN_ENABLE_BY_TOOL
+	if (get_boot_work_mode() == WORK_MODE_BOOT) {
+		ret = sunxi_burn_rotpk();
+		if (ret)
+			return ret;
 	}
 #endif
 
-#ifdef CONFIG_SUNXI_AUTO_UPDATE
-	auto_update_check();
-#endif
-
-	return ret;
+	return 0;
 }
+
+#ifdef CONFIG_SUNXI_FAST_BURN_KEY
+/* uboot already relocated, static var will be good enough */
+static int sunxi_burn_key_processed;
+
+static int sunxi_fast_burn_key(void)
+{
+	int storage_type = get_boot_storage_type_ext();
+	int ret		 = 0;
+
+	sunxi_burn_key_processed = 0;
+
+	if (!sunxi_flash_is_support_fast_write(storage_type)) {
+		pr_msg("sunxi flash type@%d not support fast burn key\n",
+		       storage_type);
+		return 0;
+	} else
+		ret = sunxi_flash_hook_init();
+
+	if (ret) {
+		pr_msg("sunxi flash hook init fail\n");
+		return 0;
+	}
+
+	pr_msg("try fast burn key\n");
+	if (!sunxi_burn_key_processed) {
+		sunxi_burn_key_processed = 1;
+		sunxi_keydata_burn_by_usb();
+	}
+	return 0;
+}
+#endif
 
 static int sunxi_burn_key(void)
 {
@@ -636,8 +616,13 @@ static int sunxi_burn_key(void)
 	sunxi_auto_fel_by_usb();
 #endif
 #ifdef CONFIG_SUNXI_BURN
-	pr_msg("try to burn key\n");
-	sunxi_keydata_burn_by_usb();
+#  ifdef CONFIG_SUNXI_FAST_BURN_KEY
+	if (!sunxi_burn_key_processed)
+#  endif
+	{
+		pr_msg("try to burn key\n");
+		sunxi_keydata_burn_by_usb();
+	}
 #endif
 	return 0;
 }
@@ -933,14 +918,12 @@ static init_fnc_t init_sequence_r[] = {
 #ifdef CONFIG_ADDR_MAP
 	initr_addr_map,
 #endif
+
 #if defined(CONFIG_BOARD_EARLY_INIT_R)
 	board_early_init_r,
 #endif
 #ifdef CONFIG_SUNXI_LEDC
 	initr_ledc,
-#endif
-#ifdef CONFIG_CMD_PWM_LED
-	pwm_led_init,
 #endif
 	INIT_FUNC_WATCHDOG_RESET
 #ifdef CONFIG_POST
@@ -1017,10 +1000,14 @@ static init_fnc_t init_sequence_r[] = {
 #ifdef CONFIG_ARM
 	initr_enable_interrupts,
 #endif
+#ifdef CONFIG_SUNXI_FAST_BURN_KEY
+	sunxi_fast_burn_key,
+#endif
 #ifdef CONFIG_ARCH_SUNXI
 	initr_sunxi_plat,
 #endif
 	initr_env,
+	board_env_late_init,
 #if defined(CONFIG_MICROBLAZE) || defined(CONFIG_M68K)
 	timer_init,		/* initialize timer */
 #endif
@@ -1031,7 +1018,10 @@ static init_fnc_t init_sequence_r[] = {
 #ifdef CONFIG_CMD_NET
 	initr_ethaddr,
 #endif
-	check_fel_key,
+#ifdef CONFIG_ARCH_SUNXI
+	sunxi_burn_key,
+#endif
+
 #ifdef CONFIG_BOARD_LATE_INIT
 	board_late_init,
 #endif
@@ -1071,9 +1061,7 @@ static init_fnc_t init_sequence_r[] = {
 #if defined(CONFIG_PRAM)
 	initr_mem,
 #endif
-#ifdef CONFIG_ARCH_SUNXI
-	sunxi_burn_key,
-#endif
+
 #ifdef CONFIG_SOUND_SUNXI_BOOT_TONE
 	sunxi_boot_tone_play,
 #endif

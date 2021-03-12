@@ -161,7 +161,7 @@ static int ir_raw_event_store(struct ir_raw_buffer *ir_raw,
 	if (ir_raw->dcnt < IR_RAW_BUF_SIZE)
 		memcpy(&(ir_raw->raw[ir_raw->dcnt++]), ev, sizeof(*ev));
 	else
-		printf("raw event store full\n");
+		print_debug("raw event store full\n");
 
 	return 0;
 }

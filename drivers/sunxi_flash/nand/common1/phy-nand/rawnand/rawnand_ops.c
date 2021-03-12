@@ -26,6 +26,7 @@
 #include "rawnand_readretry.h"
 #include "../../nand_osal_uboot.h"
 
+
 struct nand_phy_write_lsb_cache nand_phy_w_cache[NAND_OPEN_BLOCK_CNT] = {
     {0},
     {0},
@@ -129,6 +130,9 @@ int generic_read_page_start(struct _nand_physic_op_par *npo)
 	u32 def_spare[32];
 	int ret;
 	u32 ecc_block, sect_bitmap = 0;
+
+	if (npo->sect_bitmap % 2)
+		npo->sect_bitmap += 1;
 
 	if (npo->sect_bitmap == 0 || npo->sect_bitmap > nci->sector_cnt_per_page)
 	ecc_block = nci->sector_cnt_per_page / 2;
@@ -298,7 +302,7 @@ int generic_read_page(struct _nand_physic_op_par *npo)
 	}
 
 	if ((npo->mdata == NULL) && (npo->sdata == NULL) && (npo->sect_bitmap)) {
-		RAWNAND_ERR("fatal err -1, wrong input parameter, mdata: 0x%08x  sdata: 0x%08x  sect_bitmap: 0x%x\n", npo->mdata, npo->sdata, npo->sect_bitmap);
+		RAWNAND_ERR("fatal err -1, wrong input parameter, mdata is NULL, sdata is NULL, sect_bitmap: 0x%x\n", npo->sect_bitmap);
 		return ERR_NO_12;
 	}
 
@@ -687,9 +691,10 @@ int generic_read_two_plane_page(struct _nand_physic_op_par *npo)
 {
 
 	int ret = 0;
-	int ret0, ret1;
+	int ret0 = 0, ret1 = 0;
 	uchar spare[64];
 	int i;
+	int len_off = 0;
 	struct _nand_physic_op_par npo1;
 	struct _nand_physic_op_par npo2;
 	struct nand_chip_info *nci = nci_get_from_nsi(g_nsi, npo->chip);
@@ -698,7 +703,8 @@ int generic_read_two_plane_page(struct _nand_physic_op_par *npo)
 	npo1.chip = npo->chip;
 	npo1.block = (npo->block << 1);
 	npo1.page = npo->page;
-	npo1.sect_bitmap = nci->sector_cnt_per_page;
+	/*npo1.sect_bitmap = nci->sector_cnt_per_page;*/
+	npo1.sect_bitmap = min(nci->sector_cnt_per_page, npo->sect_bitmap);;
 	npo1.mdata = npo->mdata;
 	npo1.sdata = npo->sdata;
 	npo1.slen = npo->slen;
@@ -710,7 +716,12 @@ int generic_read_two_plane_page(struct _nand_physic_op_par *npo)
 	npo2.chip = npo->chip;
 	npo2.block = (npo->block << 1) + 1;
 	npo2.page = npo->page;
-	npo2.sect_bitmap = nci->sector_cnt_per_page;
+	/*npo2.sect_bitmap = nci->sector_cnt_per_page;*/
+
+	len_off = npo->sect_bitmap - nci->sector_cnt_per_page;
+
+	npo2.sect_bitmap = (len_off > 0) ? len_off : 0;
+
 	if (npo->mdata != NULL) {
 		npo2.mdata = npo->mdata + (nci->sector_cnt_per_page << 9);
 	} else {
@@ -722,6 +733,7 @@ int generic_read_two_plane_page(struct _nand_physic_op_par *npo)
 		npo2.sdata = spare;
 		npo2.slen = nci->sdata_bytes_per_page;
 	}
+
 
 	if ((npo->mdata == NULL) && (npo->sect_bitmap == 0)) {
 		npo1.sect_bitmap = 0;
@@ -926,7 +938,7 @@ int generic_bad_block_mark(struct _nand_physic_op_par *npo)
 	//RAWNAND_ERR("%s: ch: %d  chip: %d/%d  block: %d/%d \n", __func__, nctri->channel_id, nci->nctri_chip_no, nctri->chip_cnt, npo->block, nci->blk_cnt_per_chip);
 
 	if ((nci->nctri_chip_no >= nctri->chip_cnt) || (npo->block >= nci->blk_cnt_per_chip)) {
-		RAWNAND_ERR("Mfatal err -0, wrong input parameter, chip: %d/%d  block: %d/%d \n", nctri->channel_id, nci->nctri_chip_no, nctri->chip_cnt, npo->block, nci->blk_cnt_per_chip);
+		RAWNAND_ERR("Mfatal err -0, wrong input parameter, chip: %d/%d/%d  block: %d/%d \n", nctri->channel_id, nci->nctri_chip_no, nctri->chip_cnt, npo->block, nci->blk_cnt_per_chip);
 		return ERR_NO_18;
 	}
 
@@ -1036,7 +1048,8 @@ int nand_phy_get_page_type(unsigned int page)
 	return 3;
 }
 
-int nand_phy_low_page_write_cache_set(struct _nand_physic_op_par *npo)
+int nand_phy_low_page_write_cache_set(struct _nand_physic_op_par *npo,
+				      unsigned int two_plane)
 {
 	int i = 0;
 
@@ -1050,15 +1063,32 @@ int nand_phy_low_page_write_cache_set(struct _nand_physic_op_par *npo)
 			nand_phy_w_cache[i].tmp_npo.sect_bitmap = npo->sect_bitmap;
 			nand_phy_w_cache[i].tmp_npo.slen = npo->slen;
 
-			if (nand_phy_w_cache[i].tmp_npo.mdata == NULL)
-				nand_phy_w_cache[i].tmp_npo.mdata = NAND_Malloc(2 * (npo->sect_bitmap << 9));
+			if (nand_phy_w_cache[i].tmp_npo.mdata == NULL) {
+				if (two_plane == 1)
+					nand_phy_w_cache[i].tmp_npo.mdata =
+					    NAND_Malloc(
+						2 * (npo->sect_bitmap << 9));
+				else
+					nand_phy_w_cache[i].tmp_npo.mdata =
+					    nand_malloc(npo->sect_bitmap << 9);
+			}
 			if (nand_phy_w_cache[i].tmp_npo.sdata == NULL) {
 				nand_phy_w_cache[i].tmp_npo.sdata = NAND_Malloc(npo->slen);
 				memset(nand_phy_w_cache[i].tmp_npo.sdata, 0xff, npo->slen);
 			}
 
-			if (npo->mdata)
-				memcpy(nand_phy_w_cache[i].tmp_npo.mdata, npo->mdata, 2 * (npo->sect_bitmap << 9));
+			if (npo->mdata) {
+				if (two_plane == 1)
+					memcpy(
+					    nand_phy_w_cache[i].tmp_npo.mdata,
+					    npo->mdata,
+					    2 * (npo->sect_bitmap << 9));
+				else
+					memcpy(
+					    nand_phy_w_cache[i].tmp_npo.mdata,
+					    npo->mdata,
+					    (npo->sect_bitmap << 9));
+			}
 
 			if (npo->sdata)
 				memcpy(nand_phy_w_cache[i].tmp_npo.sdata, npo->sdata, npo->slen);
@@ -1113,7 +1143,8 @@ int nand_phy_low_page_write_cache_cancle(struct _nand_physic_op_par *npo)
 	return -1;
 }
 
-int nand_phy_low_page_cache_get_for_read(struct _nand_physic_op_par *npo)
+int nand_phy_low_page_cache_get_for_read(struct _nand_physic_op_par *npo,
+					 unsigned int two_plane)
 {
 	int i = 0;
 
@@ -1124,9 +1155,18 @@ int nand_phy_low_page_cache_get_for_read(struct _nand_physic_op_par *npo)
 		    (nand_phy_w_cache[i].tmp_npo.mdata != NULL) &&
 		    (nand_phy_w_cache[i].tmp_npo.sdata != NULL)) {
 
-			if (npo->mdata)
-				memcpy(npo->mdata, nand_phy_w_cache[i].tmp_npo.mdata, 2 * (npo->sect_bitmap << 9));
-
+			if (npo->mdata) {
+				if (two_plane == 1)
+					memcpy(
+					    npo->mdata,
+					    nand_phy_w_cache[i].tmp_npo.mdata,
+					    2 * (npo->sect_bitmap << 9));
+				else
+					memcpy(
+					    npo->mdata,
+					    nand_phy_w_cache[i].tmp_npo.mdata,
+					    (npo->sect_bitmap << 9));
+			}
 			if (npo->sdata)
 				memcpy(npo->sdata, nand_phy_w_cache[i].tmp_npo.sdata, npo->slen);
 
@@ -1660,9 +1700,11 @@ int generic_rw_use_chip_function(struct _nand_physic_op_par *npo, unsigned int f
 		lnpo.chip = nsci->nci_first->chip_no;
 		lnpo.page = npo->page;
 	}
+
 	lnpo.block = npo->block;
 	lnpo.mdata = npo->mdata;
-	lnpo.sect_bitmap = nsci->nci_first->sector_cnt_per_page;
+	/*lnpo.sect_bitmap = nsci->nci_first->sector_cnt_per_page;*/
+	lnpo.sect_bitmap = npo->sect_bitmap;
 	lnpo.sdata = npo->sdata;
 	lnpo.slen = npo->slen;
 
@@ -1671,7 +1713,8 @@ int generic_rw_use_chip_function(struct _nand_physic_op_par *npo, unsigned int f
 
 	if ((nci->npi->operation_opt & NAND_PAIRED_PAGE_SYNC) && (function == 1)) {
 		if (nand_phy_get_page_type(lnpo.page) == 2) {
-			ret = nand_phy_low_page_write_cache_set(&lnpo);
+			ret = nand_phy_low_page_write_cache_set(
+			    &lnpo, nsci->two_plane);
 			return ret;
 		} else if (nand_phy_get_page_type(lnpo.page) == 3) {
 			low_npo = nand_phy_low_page_cache_get_for_write(&lnpo);
@@ -1685,8 +1728,11 @@ int generic_rw_use_chip_function(struct _nand_physic_op_par *npo, unsigned int f
 		} else {
 			;
 		}
-	} else if ((nci->npi->operation_opt & NAND_PAIRED_PAGE_SYNC) && (function == 0)) {
-		if ((nand_phy_get_page_type(lnpo.page) == 2) && (nand_phy_low_page_cache_get_for_read(&lnpo) == 0))
+	} else if ((nci->npi->operation_opt & NAND_PAIRED_PAGE_SYNC) &&
+		   (function == 0)) {
+		if ((nand_phy_get_page_type(lnpo.page) == 2) &&
+		    (nand_phy_low_page_cache_get_for_read(
+			 &lnpo, nsci->two_plane) == 0))
 			return 0;
 	} else {
 		;

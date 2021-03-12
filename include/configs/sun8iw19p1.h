@@ -6,7 +6,31 @@
 #ifndef __CONFIG_H
 #define __CONFIG_H
 
-/*#define FPGA_PLATFORM*/
+
+#ifdef CONFIG_SUNXI_UBIFS
+#define CONFIG_AW_MTD_SPINAND 1
+#define CONFIG_AW_SPINAND_PHYSICAL_LAYER 1
+#define CONFIG_AW_SPINAND_NONSTANDARD_SPI_DRIVER 1
+#define CONFIG_AW_SPINAND_PSTORE_MTD_PART 0
+#define CONFIG_AW_MTD_SPINAND_UBOOT_BLKS 24
+#define CONFIG_AW_SPINAND_ENABLE_PHY_CRC16 0
+#define CONFIG_MTD_DEVICE
+#define CONFIG_MTD_PARTITIONS
+#define CONFIG_CMD_MTDPARTS
+#define CONFIG_CMD_UBIFS
+#define CONFIG_MTD_UBI_WL_THRESHOLD 4096
+#define CONFIG_MTD_UBI_BEB_LIMIT 40
+#define CONFIG_CMD_UBI
+#define CONFIG_RBTREE
+#define CONFIG_LZO
+/* Nand config */
+#define CONFIG_SYS_MAX_NAND_DEVICE	1
+#define CONFIG_SYS_NAND_BASE	0x00
+/* simulate ubi solution offline burn */
+/* #define CONFIG_UBI_OFFLINE_BURN */
+#endif
+
+
 /*
  * sun8iw19 specific configuration
  */

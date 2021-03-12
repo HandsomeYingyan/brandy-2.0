@@ -26,12 +26,14 @@ int arm_svc_write_sec_reg(u32 val,ulong reg);
 int arm_svc_arisc_startup(ulong cfg_base);
 int arm_svc_arisc_wait_ready(void);
 int arm_svc_arisc_fake_poweroff(void);
+int arm_svc_fake_poweroff(void);
 u32 arm_svc_arisc_read_pmu(ulong addr);
 int arm_svc_arisc_write_pmu(ulong addr,u32 value);
 
 int arm_svc_efuse_read(void *key_buf, void *read_buf);
 int arm_svc_efuse_write(void *key_buf);
 int arm_svc_probe_secure_mode(void);
+int arm_svc_customer_encrypt(u32 customer_reserved_id);
 
 
 int smc_init(void);
@@ -44,6 +46,7 @@ int smc_aes_rssk_decrypt_to_keysram(void);
 int smc_aes_algorithm(char *out_buf, char *in_buf, int data_len, char* pkey, int key_mode, int decrypt);
 int smc_tee_keybox_store(const char *name, char *in_buf, int len);
 int smc_tee_probe_drm_configure(ulong *drm_base, ulong *drm_size);
+int smc_tee_setup_mips(uint32_t load_addr, uint32_t mips_size);
 
 
 int arm_svc_set_cpu_on(int cpu, uint entry);

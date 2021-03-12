@@ -439,6 +439,14 @@ config ENV_IS_IN_SUNXI_FLASH
 	  Define this if you have a sunxi Flash memory device which you
 	  want to use for the environment.
 
+config SUNXI_ENV_BACKUP
+	bool "Environment backup"
+	default n
+	depends on ENV_IS_IN_SUNXI_FLASH
+	depends on !SUNXI_REDUNDAND_ENVIRONMENT
+	help
+	  Environment backup, but the env partition must be twice the size of ENV_SIZE
+
 config ENV_OFFSET
 	hex "Environment Offset"
 	depends on !ENV_IS_IN_UBI

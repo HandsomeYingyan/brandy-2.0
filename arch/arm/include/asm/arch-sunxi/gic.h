@@ -50,6 +50,7 @@
 #define AW_IRQ_TIMER0                  80
 #define AW_IRQ_TIMER1                  81
 #define AW_IRQ_NMI                     135
+#define AW_IRQ_CIR		       138
 #define GIC_IRQ_NUM                    (191)
 
 #elif defined(CONFIG_MACH_SUN50IW10)
@@ -64,6 +65,41 @@
 #define AW_IRQ_NMI                     135
 #define GIC_IRQ_NUM                    (191)
 
+#elif defined(CONFIG_MACH_SUN50IW11)
+#define AW_IRQ_GIC_START				(32)
+#define AW_IRQ_NAND						70
+#define AW_IRQ_USB_OTG					61
+#define AW_IRQ_USB_EHCI0				62
+#define AW_IRQ_USB_OHCI0				63
+#define AW_IRQ_DMA						82
+#define AW_IRQ_TIMER0					91
+#define AW_IRQ_TIMER1					92
+#define AW_IRQ_NMI						120
+#define GIC_IRQ_NUM                    (191)
+
+#elif defined(CONFIG_MACH_SUN50IW12)
+#define AW_IRQ_GIC_START				(32)
+#define AW_IRQ_NAND						70
+#define AW_IRQ_USB_OTG					61
+#define AW_IRQ_USB_EHCI0				62
+#define AW_IRQ_USB_OHCI0				63
+#define AW_IRQ_DMA						82
+#define AW_IRQ_TIMER0					91
+#define AW_IRQ_TIMER1					92
+#define AW_IRQ_NMI						120
+#define GIC_IRQ_NUM                    (191)
+
+#elif defined(CONFIG_MACH_SUN20IW1) || defined(CONFIG_MACH_SUN8IW20)
+#define AW_IRQ_GIC_START				(32)
+#define AW_IRQ_NAND						70
+#define AW_IRQ_USB_OTG					61
+#define AW_IRQ_USB_EHCI0				62
+#define AW_IRQ_USB_OHCI0				63
+#define AW_IRQ_DMA						82
+#define AW_IRQ_TIMER0					91
+#define AW_IRQ_TIMER1					92
+#define AW_IRQ_NMI						168
+#define GIC_IRQ_NUM                    (223)
 
 #elif defined(CONFIG_MACH_SUN8IW15)
 

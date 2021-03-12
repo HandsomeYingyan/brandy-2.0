@@ -30,9 +30,9 @@
 #define HDCP_KEY_LEN (308)
 #define AES_16_BYTES_ALIGN (12)
 #define HDCP_BUFFER_LEN (HDCP_KEY_LEN + AES_16_BYTES_ALIGN)
+#define HDCP_MD5_LEN (16)
 
 #ifdef CONFIG_SUNXI_HDCP_HASH
-#define HDCP_MD5_LEN (16)
 #define RAW_HDCP_KEY_LEN (288)
 #define HDCP_FILE_SIZE (352 + HDCP_MD5_LEN)
 #else
@@ -58,9 +58,7 @@ typedef struct {
 	unsigned char rak[16]; //Random 128 bit AES CBC key in small-endian
 	unsigned char data
 		[HDCP_BUFFER_LEN]; //HDCP key(308B), Padding HDCP key length to 16 bytes align after encrypt(320B)
-#ifdef CONFIG_SUNXI_HDCP_HASH
 	unsigned char md5[HDCP_MD5_LEN]; /*MD5 hash value of raw HDCP Key*/
-#endif
 	unsigned int crc; //CRC32 value of the above data
 } hdcp_object;
 
@@ -191,7 +189,7 @@ int sunxi_deal_hdcp_key_hash(char *keydata, char *buffer_convert)
 		pr_err("verify_hdcp_key_sha: failed\n");
 		return -1;
 	}
-
+	memset(&efuse_key_info, 0, sizeof(sunxi_efuse_key_info_t));
 	strcpy(efuse_key_info.name, name);
 	efuse_key_info.len      = HDCP_MD5_LEN;
 	efuse_key_info.key_data = obj->md5;
@@ -242,6 +240,7 @@ int sunxi_deal_rssk_key(void)
 	printf("rssk data:\n");
 	sunxi_dump(rssk_buf, RSSK_SIZE_BYTES);
 #endif
+	memset(&efuse_key_info, 0, sizeof(sunxi_efuse_key_info_t));
 	strcpy(efuse_key_info.name, name);
 	efuse_key_info.len      = RSSK_SIZE_BYTES;
 	efuse_key_info.key_data = rssk_buf;

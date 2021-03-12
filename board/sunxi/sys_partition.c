@@ -11,8 +11,12 @@
 #include <sunxi_flash.h>
 #include <memalign.h>
 #include <sunxi_mbr.h>
+#include <sunxi_board.h>
+#include <android_misc.h>
+#include <android_ab.h>
 
 static sunxi_mbr_t *mbr ;
+extern struct bootloader_control ab_message;
 #define MMC_LOGICAL_OFFSET   (20 * 1024 * 1024/512)
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -44,18 +48,65 @@ int sunxi_partition_init(void)
 	return 0;
 }
 
+int sunxi_probe_partition_map(void)
+{
+	struct blk_desc *desc;
+	desc = blk_get_devnum_by_typename("sunxi_flash", 0);
+	if (desc == NULL) {
+		pr_err("%s: get desc fail\n", __func__);
+		return -1;
+	}
+	if (part_init_info_map(desc) < 0)
+		return -1;
+	else
+		return 0;
+
+}
+
+int sunxi_replace_android_ab_system(char *intput_part_name, char *output_part_name)
+{
+	strncpy(output_part_name, intput_part_name, strlen(intput_part_name));
+#ifdef CONFIG_ANDROID_AB
+	int i, ret;
+	static int part_cur_len;
+	static char ab_partition[16][16] = {"bootloader", "env", "boot", "vendor_boot", "dtbo", "vbmeta", "vbmeta_system", "vbmeta_vendor"};
+	char *ab_part_list = env_get("ab_partition_list");
+	if ((gd->env_has_init) && (ab_part_list != NULL) && (part_cur_len != strlen(ab_part_list))) {
+		memset(ab_partition, 0, sizeof(ab_partition));
+		sunxi_parsed_specific_string(ab_part_list, ab_partition, ',', ' ');
+		part_cur_len = strlen(ab_part_list);
+	}
+	ret = ab_select_slot_from_partname("misc");
+	/* tick_printf("output_part_name:%s\t intput_part_name:%s\n", output_part_name, intput_part_name); */
+	for (i = 0; i < sizeof(ab_partition)/sizeof(ab_partition[0]); i++) {
+		if (!strncmp(intput_part_name, ab_partition[i], max(strlen(intput_part_name), strlen(ab_partition[i])))) {
+			if (ret == 1) {
+				sprintf(output_part_name, "%s_b", intput_part_name);
+			} else {
+				sprintf(output_part_name, "%s_a", intput_part_name);
+			}
+			break;
+		}
+	}
+#endif
+	/* tick_printf("output_part_name:%s\t intput_part_name:%s\n", output_part_name, intput_part_name); */
+	return 0;
+}
+
 int sunxi_partition_get_partno_byname(const char *part_name)
 {
 	int i;
 	struct blk_desc *desc;
 	int ret;
 	disk_partition_t info;
+	char temp_part_name[16] = {0};
 
 	desc = blk_get_devnum_by_typename("sunxi_flash", 0);
 	if (desc == NULL) {
 		printf("%s: get desc fail\n", __func__);
 		ret = -ENODEV;
 	}
+	sunxi_replace_android_ab_system((char *)part_name, temp_part_name);
 
 	for (i = 1;; i++) {
 		ret = part_get_info(desc, i, &info);
@@ -64,7 +115,9 @@ int sunxi_partition_get_partno_byname(const char *part_name)
 			printf("partno erro : can't find partition %s\n", part_name);
 			return ret;
 		}
-		if (!strncmp((const char *)info.name, part_name, sizeof(info.name))) {
+		if (!strncmp((const char *)info.name, temp_part_name, sizeof(info.name))) {
+			return i;
+		} else if (!strncmp((const char *)info.name, part_name, sizeof(info.name))) {
 			return i;
 		}
 	}
@@ -98,6 +151,7 @@ int sunxi_flash_try_partition(struct blk_desc *desc, const char *str,
 			      disk_partition_t *info)
 {
 	int i, ret;
+	char temp_part_name[16] = {0};
 #if 0
 	char *gpt_signature[512] = {0};
 	printf("\n");
@@ -121,13 +175,16 @@ int sunxi_flash_try_partition(struct blk_desc *desc, const char *str,
 	}
 	printf("line:%d:get gpt partition success\n", __LINE__);
 #endif
+	sunxi_replace_android_ab_system((char *)str, temp_part_name);
 	for (i = 1;; i++) {
 		ret = part_get_info(desc, i, info);
 		debug("%s: try part %d, ret = %d\n", __func__, i, ret);
 		if (ret < 0)
 			return ret;
 
-		if (!strncmp((const char *)info->name, str, sizeof(info->name)))
+		if (!strncmp((const char *)info->name, temp_part_name, sizeof(info->name)))
+			break;
+		else if (!strncmp((const char *)info->name, (char *)str, sizeof(info->name)))
 			break;
 	}
 	return 0;
@@ -142,8 +199,9 @@ int sunxi_partition_get_info(const char *part_name, disk_partition_t *info)
 	int logic_offset;
 
 	storage_type = get_boot_storage_type();
-	if(storage_type == STORAGE_EMMC || storage_type == STORAGE_EMMC3
-		|| storage_type == STORAGE_SD) {
+	if (get_boot_work_mode() == WORK_MODE_CARD_PRODUCT ||
+		storage_type == STORAGE_EMMC || storage_type == STORAGE_EMMC3
+		|| storage_type == STORAGE_SD || storage_type == STORAGE_EMMC0) {
 		logic_offset = MMC_LOGICAL_OFFSET;
 	} else {
 		logic_offset = 0;

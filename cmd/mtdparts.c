@@ -2133,22 +2133,12 @@ static int _sunxi_do_mtdparts(cmd_tbl_t *cmdtp, int flag, int argc,
 		       char * const argv[])
 {
 	int ret;
-	char cmd[2][20];
-	char *argv_temp[2];
 
 	/*normal boot : env is not ready, so use default.*/
 	if (!(gd->flags & GD_FLG_ENV_READY))
 		set_default_env(NULL);
 
 	ret = do_mtdparts(cmdtp, flag, argc, argv);
-	if (!ret) {
-		memset(cmd, 0x00, sizeof(cmd));
-		sprintf(&cmd[0][0], "chpart");
-		sprintf(&cmd[1][0], "nand0,1");
-		argv_temp[0] = &cmd[0][0];
-		argv_temp[1] = &cmd[1][0];
-		do_chpart(cmdtp, flag, 2, argv_temp);
-	}
 
 	return ret;
 }

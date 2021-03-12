@@ -12,6 +12,7 @@
 #include <securestorage.h>
 #include <sunxi_board.h>
 #include <sys_partition.h>
+#include <sunxi_keybox.h>
 DECLARE_GLOBAL_DATA_PTR;
 volatile int sunxi_usb_burn_from_boot_handshake, sunxi_usb_burn_from_boot_init,
 	sunxi_usb_burn_from_boot_setup, sunxi_auto_fel_from_boot_handshake;
@@ -512,13 +513,14 @@ int __sunxi_burn_key(u8 *buff, uint buff_len)
 	}
 	key_count = key_main->count;
 	printf("key_count=%d\n", key_count);
+#ifdef CONFIG_SUNXI_SECURE_STORAGE
 	if(sunxi_secure_storage_init())
 	{
 		printf("%s secure storage init failed\n", __func__);
 
 		return -1;
 	}
-
+#endif
 	for(;key_count>0;key_count--, key_list++)
 	{
 		key_list = (sunxi_usb_burn_key_info_t *)p_buff;
@@ -530,8 +532,10 @@ int __sunxi_burn_key(u8 *buff, uint buff_len)
 		printf("key if_burn=%d\n", key_list->if_burn);
 		printf("key if_replace=%d\n", key_list->if_replace);
 		printf("key if_crypt=%d\n", key_list->if_crypt);
-		printf("key data:\n");
-		sunxi_dump(key_list->key_data, key_list->len);
+		if (gd->debug_mode >= 7) {
+			printf("key data:\n");
+			sunxi_dump(key_list->key_data, key_list->len);
+		}
 		printf("###################\n");
 		offset = (sizeof(sunxi_usb_burn_key_info_t)) + ((key_list->len + 15) & (~15));
 		printf("offset=%d\n", offset);
@@ -560,6 +564,19 @@ int __sunxi_burn_key(u8 *buff, uint buff_len)
 					return -1;
 				}
 				#endif
+#ifdef CONFIG_SUNXI_CHECK_CUSTOMER_RESERVED_ID
+			} else if (!strncmp(key_list->name, "customer_reserved", sizeof("customer_reserved"))) {
+				u32 sunxi_handle_customer_reserved_id(u32 soft_protect_id);
+				u32 customer_reserved_id;
+				u8 *key_buf = (u8 *)key_list->key_data;
+				customer_reserved_id = (key_buf[0] << 8) | key_buf[1];
+				customer_reserved_id = sunxi_handle_customer_reserved_id(customer_reserved_id);
+				key_buf[0] = 0;
+				key_buf[1] = 0;
+				key_buf[2] = customer_reserved_id & 0xff;
+				key_buf[3] = (customer_reserved_id >> 8) & 0xff;
+				efuse_key_info.len = key_list->len = 4;
+#endif
 			}
 
 			if ((sunxi_get_securemode() == SUNXI_SECURE_MODE_WITH_SECUREOS) || (sunxi_probe_secure_monitor()))
@@ -576,6 +593,7 @@ int __sunxi_burn_key(u8 *buff, uint buff_len)
 				}
 			}
 		}
+#ifdef CONFIG_SUNXI_SECURE_STORAGE
 		else
 		{
 			if(!strcmp("hdcpkey", key_list->name))
@@ -586,8 +604,10 @@ int __sunxi_burn_key(u8 *buff, uint buff_len)
 					printf("sunxi deal with hdcp key failed\n");
 					return -1;
 				}
-			} else if (sunxi_keybox_has_key(key_list->name)) {
-				ret = sunxi_secure_object_down(
+			}
+#ifdef CONFIG_SUNXI_KEYBOX
+			else if (sunxi_keybox_has_key(key_list->name)) {
+				ret = sunxi_keybox_burn_key(
 					key_list->name,
 					(char *)key_list->key_data,
 					key_list->len, key_list->if_crypt,
@@ -597,7 +617,9 @@ int __sunxi_burn_key(u8 *buff, uint buff_len)
 				if (ret) {
 					return -1;
 				}
-			} else {
+			}
+#endif
+			else {
 				sunxi_secure_object_set(key_list->name,
 										key_list->if_crypt,
 										key_list->if_replace,
@@ -613,14 +635,16 @@ int __sunxi_burn_key(u8 *buff, uint buff_len)
 
 			}
 		}
+#endif
 	}
+#ifdef	CONFIG_SUNXI_SECURE_STORAGE
 	if(sunxi_secure_storage_exit())
 	{
 		printf("sunxi_secure_storage_exit err\n");
 
 		return -1;
 	}
-
+#endif
 	return 0;
 }
 
@@ -653,12 +677,13 @@ int __sunxi_read_key_by_name(void *buffer, uint buff_len, int *read_len)
 		printf("the memory input or output is NULL\n");
 		return -1;
 	}
+#ifdef CONFIG_SUNXI_SECURE_STORAGE
 	if(sunxi_secure_storage_init())
 	{
 		printf("%s secure storage init failed\n", __func__);
 		return -1;
 	}
-
+#endif
 	key_info = (sunxi_usb_burn_key_info_t *)buffer;
 
 	printf("key name=%s\n", key_info->name);
@@ -730,6 +755,7 @@ int __sunxi_read_key_by_name(void *buffer, uint buff_len, int *read_len)
 int __sunxi_erase_key(void)
 {
 	 __attribute__((unused)) int ret;
+#ifdef CONFIG_SUNXI_SECURE_STORAGE
 	ret = sunxi_secure_storage_init();
 	if(ret < 0)
 	{
@@ -746,7 +772,7 @@ int __sunxi_erase_key(void)
 
 	printf("erase securestorage success\n");
 	sunxi_secure_storage_exit();
-
+#endif
 	return 0;
 }
 
@@ -768,6 +794,7 @@ int __sunxi_erase_key(void)
 */
 int __sunxi_burn_flag(void)
 {
+#ifdef CONFIG_SUNXI_SECURE_STORAGE
 	int ret;
 	ret = sunxi_secure_storage_init();
 	if(ret < 0)
@@ -783,7 +810,7 @@ int __sunxi_burn_flag(void)
 
 	printf("save burned flag to securestorage success\n");
 	sunxi_secure_storage_exit();
-
+#endif
 	return 0;
 }
 
@@ -1065,16 +1092,32 @@ static void sunxi_usb_burn_private_partition(struct umass_bbb_cbw_t *cbw,
 	{
 		__usb_handshake_t *handshake =
 			(__usb_handshake_t *)trans_data.base_send_buffer;
+		int partition_availabe = 1;
 
-		if (sunxi_partition_get_info("private", &disk_part_info)) {
-			printf("private partition is not exist\n");
-
-			csw->bCSWStatus = -1;
+#ifdef CONFIG_SUNXI_FAST_BURN_KEY
+		if (get_boot_storage_type_ext() == STORAGE_NAND) {
+			if (sunxi_flash_init_ext()) {
+				printf("flash init fail\n");
+				csw->bCSWStatus = -1;
+				partition_availabe = 0;
+			}
 		}
+#endif
+
+		if (partition_availabe) {
+			if (sunxi_partition_get_info("private",
+						     &disk_part_info)) {
+				printf("private partition is not exist\n");
+
+				csw->bCSWStatus = -1;
+			} else {
+				csw->bCSWStatus = 0;
+			}
+		}
+
+
 		burn_private_start = disk_part_info.start;
 		burn_private_len   = disk_part_info.size;
-
-		csw->bCSWStatus = 0;
 
 		memset(handshake, 0, sizeof(__usb_handshake_t));
 		/* for private partition, use __usb_handshake_t, magic "usb_burn_handsha" */
@@ -1157,6 +1200,7 @@ static void sunxi_usb_burn_private_partition(struct umass_bbb_cbw_t *cbw,
 
 		csw->bCSWStatus = 0;
 
+		sunxi_flash_write_end();
 		sunxi_flash_flush();
 		sunxi_usb_pburn_status = SUNXI_USB_PBURN_EXIT;
 
@@ -1188,6 +1232,7 @@ static void sunxi_usb_burn_private_partition(struct umass_bbb_cbw_t *cbw,
 
 			csw->bCSWStatus = -1;
 		}
+		sunxi_flash_write_end();
 		sunxi_flash_flush();
 #ifdef CONFIG_SUNXI_SECURE_STORAGE
 		if (sunxi_secure_storage_init()) {
@@ -1464,6 +1509,7 @@ static int sunxi_pburn_state_loop(void  *buffer)
 
 		  					csw.bCSWStatus = 0;
 
+							sunxi_flash_write_end();
 							sunxi_flash_flush();
 
 							if(private_data_ext_buff)

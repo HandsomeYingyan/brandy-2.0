@@ -77,8 +77,8 @@ static axp_contrl_info *get_ctrl_info_from_tbl(char *name)
 
 static int pmu_axp1530_necessary_reg_enable(void)
 {
-	u8 reg_value;
-
+	__attribute__((unused)) u8 reg_value;
+#ifdef CONFIG_AXP1530A_NECESSARY_REG_ENABLE
 	if (pmic_bus_read(AXP1530_RUNTIME_ADDR, AXP1530_WRITE_LOCK, &reg_value))
 		return -1;
 	reg_value |= 0x5;
@@ -96,6 +96,7 @@ static int pmu_axp1530_necessary_reg_enable(void)
 	reg_value |= (0x1 << 5);
 	if (pmic_bus_write(AXP1530_RUNTIME_ADDR, AXP1530_DCDC_DVM_PWM_CTL, reg_value))
 		return -1;
+#endif
 	return 0;
 }
 
@@ -111,7 +112,7 @@ static int pmu_axp1530_probe(void)
 		return -1;
 	}
 	pmu_chip_id &= 0XCF;
-	if (pmu_chip_id == AXP1530_CHIP_ID) {
+	if (pmu_chip_id == AXP1530_CHIP_ID || pmu_chip_id == AXP313A_CHIP_ID || pmu_chip_id == AXP313B_CHIP_ID) {
 		/*pmu type AXP1530*/
 		pmu_axp1530_necessary_reg_enable();
 		tick_printf("PMU: AXP1530\n");
@@ -119,6 +120,14 @@ static int pmu_axp1530_probe(void)
 	}
 	return -1;
 }
+
+static int pmu_axp1530_get_info(char *name, unsigned char *chipid)
+{
+	strncpy(name, "axp1530", sizeof("axp1530"));
+	*chipid = AXP1530_CHIP_ID;
+	return 0;
+}
+
 
 static int pmu_axp1530_set_voltage(char *name, uint set_vol, uint onoff)
 {
@@ -315,6 +324,7 @@ unsigned char pmu_axp1530_set_reg_value(unsigned char reg_addr, unsigned char re
 
 U_BOOT_AXP_PMU_INIT(pmu_axp1530) = {
 	.pmu_name	  = "pmu_axp1530",
+	.get_info		= pmu_axp1530_get_info,
 	.probe		   = pmu_axp1530_probe,
 	.set_voltage       = pmu_axp1530_set_voltage,
 	.get_voltage       = pmu_axp1530_get_voltage,

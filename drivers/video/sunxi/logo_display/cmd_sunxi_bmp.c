@@ -153,6 +153,7 @@ U_BOOT_CMD(
 
 int show_bmp_on_fb(char *bmp_head_addr, unsigned int fb_id)
 {
+#if defined(CONFIG_BOOT_GUI)
 	struct bmp_image *bmp = (struct bmp_image *)bmp_head_addr;
 	struct canvas *cv = NULL;
 	char *src_addr;
@@ -263,6 +264,10 @@ err_out:
 	if (cv)
 		fb_unlock(fb_id, NULL, 0);
 	return -1;
+#else
+	printf("Fail to show bmp! You need to enable CONFIG_BOOT_GUI\n");
+	return -1;
+#endif
 }
 
 int sunxi_bmp_display(char *name)
@@ -278,18 +283,18 @@ int sunxi_bmp_display(char *name)
 	if (bmp_head_addr) {
 		sprintf(bmp_head, "%lx", (ulong)bmp_head_addr);
 	} else {
-		printf("sunxi bmp: alloc buffer for %s fail\n", name);
+		pr_error("sunxi bmp: alloc buffer for %s fail\n", name);
 		return -1;
 	}
 	strncpy(bmp_name, name, sizeof(bmp_name));
-	printf("bmp_name=%s\n", bmp_name);
+	tick_printf("bmp_name=%s\n", bmp_name);
 
 	partno = sunxi_partition_get_partno_byname("bootloader"); /*android*/
 	if (partno < 0) {
 		partno = sunxi_partition_get_partno_byname(
 		    "boot-resource"); /*linux*/
 		if (partno < 0) {
-			printf("Get bootloader and boot-resource partition number fail!\n");
+			pr_error("Get bootloader and boot-resource partition number fail!\n");
 			return -1;
 		}
 	}
@@ -303,14 +308,14 @@ int sunxi_bmp_display(char *name)
 	argv[5] = NULL;
 
 	if (do_fat_fsload(0, 0, 5, argv)) {
-		printf("sunxi bmp info error : unable to open logo file %s\n",
+		pr_error("sunxi bmp info error : unable to open logo file %s\n",
 		       argv[4]);
 		return -1;
 	}
 
 	ret = show_bmp_on_fb(bmp_head_addr, FB_ID_0);
 	if (ret != 0)
-		printf("show bmp on fb failed !%d\n", ret);
+		pr_error("show bmp on fb failed !%d\n", ret);
 
 	return ret;
 }
@@ -336,16 +341,16 @@ static int sunxi_bmp_probe_info(uint addr)
 
 	if ((bmp->header.signature[0] != 'B') ||
 	    (bmp->header.signature[1] != 'M')) {
-		printf("this is not a bmp picture\n");
+		pr_error("this is not a bmp picture\n");
 
 		return -1;
 	}
 	debug("bmp picture dectede\n");
 
-	printf("Image size    : %d x %d\n", bmp->header.width,
+	pr_msg("Image size    : %d x %d\n", bmp->header.width,
 	       (bmp->header.height & 0x80000000) ? (-bmp->header.height)
 						 : (bmp->header.height));
-	printf("Bits per pixel: %d\n", bmp->header.bit_count);
+	pr_msg("Bits per pixel: %d\n", bmp->header.bit_count);
 
 	return 0;
 }
@@ -367,13 +372,13 @@ static int fat_read_file_ex(char *fatname, char *filename, char *addr)
 
 	partition_num = sunxi_partition_get_partno_byname(fat_name);
 	if (partition_num < 0) {
-		printf("[boot disp] can not find the partition %s\n", fat_name);
+		pr_error("[boot disp] can not find the partition %s\n", fat_name);
 		return -1;
 	}
 	sprintf(partition, "0:%x", partition_num);
 	bmp_buff = addr;
 	if (!bmp_buff) {
-		printf("sunxi bmp: alloc buffer fail\n");
+		pr_error("sunxi bmp: alloc buffer fail\n");
 		return -1;
 	}
 	char *bmp_argv[6] = {"fatload",  "sunxi_flash", "0:0",
@@ -382,7 +387,7 @@ static int fat_read_file_ex(char *fatname, char *filename, char *addr)
 	sprintf(bmp_addr, "%lx", (ulong)bmp_buff);
 	bmp_argv[3] = bmp_addr;
 	if (do_fat_fsload(0, 0, 5, bmp_argv)) {
-		printf("sunxi bmp info error : unable to open logo file %s\n",
+		pr_error("sunxi bmp info error : unable to open logo file %s\n",
 		       bmp_argv[1]);
 		return -1;
 	}
@@ -401,14 +406,14 @@ static int sunxi_advert_verify_head(struct __advert_head *adv_head)
 
 	if (memcmp((char *)(adv_head->magic), ADVERT_MAGIC,
 		   strlen(ADVERT_MAGIC))) {
-		printf("advert magic not equal,%s\n",
+		pr_error("advert magic not equal,%s\n",
 		       (char *)(adv_head->magic));
 		return -1;
 	}
 
 	if ((adv_head->length > SUNXI_DISPLAY_FRAME_BUFFER_SIZE) ||
 	    (adv_head->length == 0)) {
-		printf("advert length=%d to big or to short\n",
+		pr_error("advert length=%d to big or to short\n",
 		       adv_head->length);
 		return -1;
 	}
@@ -444,7 +449,7 @@ static __s32 check_sum(void *mem_base, __u32 size, __u32 src_sum)
 	if (sum == src_sum) {
 		return 0;
 	} else {
-		printf("err: sum=%x; src_sum=%x\n", sum, src_sum);
+		pr_error("err: sum=%x; src_sum=%x\n", sum, src_sum);
 		return -1;
 	}
 }

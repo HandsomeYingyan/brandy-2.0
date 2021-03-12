@@ -19,6 +19,7 @@
 
 #define SUNXI_USB_CTRL		0x800
 #define SUNXI_USB_PHY_CTRL	0x810
+#define HOST_MAXNUM		5
 
 static u32 usb_vbase = SUNXI_EHCI0_BASE;
 unsigned int usb_drv_vbus_gpio = -1;
@@ -35,10 +36,16 @@ typedef struct _ehci_config
 }ehci_config_t;
 
 
-static ehci_config_t ehci_cfg[] = {
+static ehci_config_t ehci_cfg[HOST_MAXNUM] = {
 	{SUNXI_EHCI0_BASE, USBEHCI0_RST_BIT, USBEHCI0_GATIING_BIT, USBPHY0_RST_BIT, USBPHY0_SCLK_GATING_BIT, 1, "USB-DRD"},
 #ifdef SUNXI_EHCI1_BASE
-	{SUNXI_EHCI1_BASE, USBEHCI1_RST_BIT, USBEHCI1_GATIING_BIT, USBPHY1_RST_BIT, USBPHY1_SCLK_GATING_BIT, 0, "USB-Host"},
+	{SUNXI_EHCI1_BASE, USBEHCI1_RST_BIT, USBEHCI1_GATIING_BIT, USBPHY1_RST_BIT, USBPHY1_SCLK_GATING_BIT, 0, "USB1-Host"},
+#endif
+#ifdef SUNXI_EHCI2_BASE
+	{SUNXI_EHCI2_BASE, USBEHCI2_RST_BIT, USBEHCI2_GATIING_BIT, USBPHY2_RST_BIT, USBPHY2_SCLK_GATING_BIT, 0, "USB2-Host"},
+#endif
+#ifdef SUNXI_EHCI3_BASE
+	{SUNXI_EHCI3_BASE, USBEHCI3_RST_BIT, USBEHCI3_GATIING_BIT, USBPHY3_RST_BIT, USBPHY3_SCLK_GATING_BIT, 0, "USB3-Host"},
 #endif
 };
 
@@ -47,10 +54,14 @@ static ehci_config_t ehci_cfg[] = {
 ulong config_usb_pin(int index)
 {
 
-	if(index == 0)
-		usb_drv_vbus_gpio =sunxi_name_to_gpio(CONFIG_USB0_VBUS_PIN);
+	if (index == 0)
+		usb_drv_vbus_gpio = sunxi_name_to_gpio(CONFIG_USB0_VBUS_PIN);
+	else if (index == 1)
+		usb_drv_vbus_gpio = sunxi_name_to_gpio(CONFIG_USB1_VBUS_PIN);
+	else if (index == 2)
+		usb_drv_vbus_gpio = sunxi_name_to_gpio(CONFIG_USB2_VBUS_PIN);
 	else
-		usb_drv_vbus_gpio =sunxi_name_to_gpio(CONFIG_USB1_VBUS_PIN);
+		usb_drv_vbus_gpio = sunxi_name_to_gpio(CONFIG_USB3_VBUS_PIN);
 
 	/*usbc0 port:PB0<0><1><default><default>*/
 	/*usbc1 port:PB1<0><1><default><default>*/
@@ -100,6 +111,12 @@ u32 open_usb_clock(int index)
 	reg_value |= (1 << ehci_cfg[index].bus_clk_gating_ofs);
 	writel(reg_value, &ccm->usb_gate_reset);
 
+#if defined(CONFIG_MACH_SUN50IW9)
+	reg_value = readl(&ccm->usb2_clk_cfg);
+	reg_value |= (1 << ehci_cfg[2].phy_slk_gatimg_ofs);
+	reg_value |= (1 << ehci_cfg[2].phy_reset_ofs);
+	writel(reg_value, &ccm->usb2_clk_cfg);
+#endif
 	/* open clk for usb phy */
 	if (index == 0) {
 		reg_value = readl(&ccm->usb0_clk_cfg);
@@ -111,6 +128,24 @@ u32 open_usb_clock(int index)
 		reg_value |= (1 << ehci_cfg[index].phy_slk_gatimg_ofs);
 		reg_value |= (1 << ehci_cfg[index].phy_reset_ofs);
 		writel(reg_value, &ccm->usb1_clk_cfg);
+	} else if (index == 2) {
+#if defined(CONFIG_MACH_SUN50IW9)
+		/*noting to do*/
+#else
+#ifdef SUNXI_EHCI2_BASE
+		reg_value = readl(&ccm->usb2_clk_cfg);
+		reg_value |= (1 << ehci_cfg[index].phy_slk_gatimg_ofs);
+		reg_value |= (1 << ehci_cfg[index].phy_reset_ofs);
+		writel(reg_value, &ccm->usb2_clk_cfg);
+#endif
+#endif
+	} else {
+#ifdef SUNXI_EHCI3_BASE
+		reg_value = readl(&ccm->usb3_clk_cfg);
+		reg_value |= (1 << ehci_cfg[index].phy_slk_gatimg_ofs);
+		reg_value |= (1 << ehci_cfg[index].phy_reset_ofs);
+		writel(reg_value, &ccm->usb3_clk_cfg);
+#endif
 	}
 	printf("config usb clk ok\n");
 	return 0;
@@ -139,6 +174,24 @@ u32 close_usb_clock(int index)
 		reg_value &= ~(1 << ehci_cfg[index].phy_slk_gatimg_ofs);
 		reg_value &= ~(1 << ehci_cfg[index].phy_reset_ofs);
 		writel(reg_value, &ccm->usb1_clk_cfg);
+	} else if (index == 2) {
+#if defined(CONFIG_MACH_SUN50IW9)
+		/*noting to do*/
+#else
+#ifdef SUNXI_EHCI2_BASE
+		reg_value = readl(&ccm->usb2_clk_cfg);
+		reg_value &= ~(1 << ehci_cfg[index].phy_slk_gatimg_ofs);
+		reg_value &= ~(1 << ehci_cfg[index].phy_reset_ofs);
+		writel(reg_value, &ccm->usb2_clk_cfg);
+#endif
+#endif
+	} else {
+#ifdef SUNXI_EHCI3_BASE
+		reg_value = readl(&ccm->usb3_clk_cfg);
+		reg_value &= ~(1 << ehci_cfg[index].phy_slk_gatimg_ofs);
+		reg_value &= ~(1 << ehci_cfg[index].phy_reset_ofs);
+		writel(reg_value, &ccm->usb3_clk_cfg);
+#endif
 	}
 
 	return 0;
@@ -159,7 +212,7 @@ void usb_passby(int index, u32 enable)
 	}
 
 	reg_value = readl(ehci_vbase + SUNXI_USB_PHY_CTRL);
-	reg_value &= ~(0x01<<1);
+	reg_value &= ~(0x01 << 3);
 	writel(reg_value, (ehci_vbase + SUNXI_USB_PHY_CTRL));
 
 	reg_value = readl(ehci_vbase + SUNXI_USB_CTRL);

@@ -819,7 +819,129 @@ static const struct de_feat sun8iw11_de_features = {
 };
 #endif
 
-#if defined(CONFIG_MACH_SUN8IW12) || defined(CONFIG_MACH_SUN8IW16)
+#if defined(CONFIG_MACH_SUN50IW10)
+static const int sun50iw10_de_num_chns[] = {
+	/* DISP0 */
+	4,
+	/* DISP1 */
+	3,
+};
+
+static const int sun50iw10_de_num_vi_chns[] = {
+	/* DISP0 */
+	2,
+	/* DISP1 */
+	1,
+};
+
+static const int sun50iw10_de_num_layers[] = {
+	/* DISP0 CH0 */
+	4,
+	/* DISP0 CH1 */
+	4,
+	/* DISP0 CH2 */
+	4,
+	/* DISP0 CH3 */
+	4,
+	/* DISP1 CH0 */
+	4,
+	/* DISP1 CH1 */
+	4,
+	/* DISP1 CH2 */
+	4,
+};
+
+static const int sun50iw10_de_is_support_vep[] = {
+	/* DISP0 CH0 */
+	1,
+	/* DISP0 CH1 */
+	0,
+	/* DISP0 CH2 */
+	0,
+	/* DISP0 CH3 */
+	0,
+	/* DISP1 CH0 */
+	0,
+	/* DISP1 CH1 */
+	0,
+	/* DISP1 CH2 */
+	0,
+};
+
+static const int sun50iw10_de_is_support_smbl[] = {
+	/* CH0 */
+	1,
+	/* CH1 */
+	0,
+};
+
+static const int sun50iw10_de_supported_output_types[] = {
+	/* tcon0 */
+	DE_OUTPUT_TYPE_LCD,
+	/* tcon1 */
+	DE_OUTPUT_TYPE_LCD,
+};
+
+static const int sun50iw10_de_is_support_wb[] = {
+	/* DISP0 */
+	1,
+	/* DISP1 */
+	1,
+};
+
+static const int sun50iw10_de_is_support_scale[] = {
+	/* DISP0 CH0 */
+	1,
+	/* DISP0 CH1 */
+	1,
+	/* DISP0 CH2 */
+	1,
+	/* DISP0 CH3 */
+	1,
+	/* DISP1 CH0 */
+	1,
+	/* DISP1 CH1 */
+	1,
+	/* DISP1 CH2 */
+	1,
+};
+
+static const int sun50iw10_de_scale_line_buffer[] = {
+	/* DISP0 CH0*/
+	2560,
+	/* DISP0 CH1*/
+	2048,
+	/* DISP0 CH2*/
+	2048,
+	/* DISP0 CH3*/
+	2048,
+	/* DISP1 CH0*/
+	2048,
+	/* DISP1 CH1*/
+	2048,
+	/* DISP1 CH2*/
+	2048,
+};
+
+static const struct de_feat sun50iw10_de_features = {
+	.num_screens = DE_NUM,
+	.num_devices = DEVICE_NUM,
+	.num_chns = sun50iw10_de_num_chns,
+	.num_vi_chns = sun50iw10_de_num_vi_chns,
+	.num_layers = sun50iw10_de_num_layers,
+	.is_support_vep = sun50iw10_de_is_support_vep,
+	.is_support_smbl = sun50iw10_de_is_support_smbl,
+	.is_support_wb = sun50iw10_de_is_support_wb,
+	.supported_output_types = sun50iw10_de_supported_output_types,
+	.is_support_scale = sun50iw10_de_is_support_scale,
+	.scale_line_buffer_yuv = sun50iw10_de_scale_line_buffer,
+	.scale_line_buffer_rgb = sun50iw10_de_scale_line_buffer,
+	.scale_line_buffer_ed = sun50iw10_de_scale_line_buffer,
+};
+#endif /*~ CONFIG_MACH_SUN50IW10*/
+
+#if defined(CONFIG_MACH_SUN8IW12) || defined(CONFIG_MACH_SUN8IW16) \
+	|| defined(CONFIG_MACH_SUN8IW19)
 static const int sun8iw12_de_num_chns[] = {
 	/* DISP0 */
 	4,
@@ -883,7 +1005,11 @@ static const int sun8iw12_de_is_support_scale[] = {
 
 static const int sun8iw12_de_scale_line_buffer_yuv[] = {
 	/* DISP0 CH0 */
+#if defined(CONFIG_MACH_SUN8IW19)
+	2048,
+#else
 	4096,
+#endif
 	/* DISP0 CH1 */
 	2048,
 	/* DISP0 CH2 */
@@ -1450,8 +1576,11 @@ int de_feat_init(void)
 	de_cur_features = &sun50iw1_de_features;
 #elif defined(CONFIG_MACH_SUN8IW11)
 	de_cur_features = &sun8iw11_de_features;
-#elif defined(CONFIG_MACH_SUN8IW12) || defined(CONFIG_MACH_SUN8IW16)
+#elif defined(CONFIG_MACH_SUN8IW12) || defined(CONFIG_MACH_SUN8IW16) \
+	|| defined(CONFIG_MACH_SUN8IW19)
 	de_cur_features = &sun8iw12_de_features;
+#elif defined(CONFIG_MACH_SUN50IW10)
+	de_cur_features = &sun50iw10_de_features;
 #elif defined(CONFIG_MACH_SUN8IW17)
 	de_cur_features = &sun8iw17_de_features;
 #elif defined(CONFIG_MACH_SUN8IW7)

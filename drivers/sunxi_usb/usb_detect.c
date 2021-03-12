@@ -17,9 +17,6 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
- * MA 02111-1307 USA
  */
 #include "usb_base.h"
 #include <scsi.h>
@@ -38,7 +35,7 @@
 #include <sunxi_flash.h>
 //#include <sys_config_old.h>
 
-volatile int sunxi_usb_detect_flag = 0;
+volatile int sunxi_usb_detect_flag;
 
 DECLARE_GLOBAL_DATA_PTR;
 

@@ -8,3 +8,4 @@ obj-$(CONFIG_SUNXI_COMM_NAND_V1) += phy2nftl.o
 obj-$(CONFIG_SUNXI_COMM_NAND_V1) += phy-nand/
 
 
+obj-$(CONFIG_SUNXI_COMM_NAND_V1) += nftl.o

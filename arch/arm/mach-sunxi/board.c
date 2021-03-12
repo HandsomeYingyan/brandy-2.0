@@ -122,7 +122,7 @@ void reset_cpu(ulong addr)
 	writel(WDT_MODE_EN, &wdog->mode);
 	writel(WDT_CTRL_KEY | WDT_CTRL_RESTART, &wdog->ctl);
 	while (1) { }
-#elif defined(CONFIG_SUNXI_NCAT)
+#elif defined(CONFIG_SUNXI_NCAT) || defined(CONFIG_SUNXI_NCAT_V2)
 		static const struct sunxi_wdog *wdog =
 			 ((struct sunxi_timer_reg *)SUNXI_TIMER_BASE)->wdog;
 
@@ -152,7 +152,7 @@ void * board_fdt_blob_setup(void)
 }
 
 
-#if !defined(CONFIG_SYS_DCACHE_OFF) && !defined(CONFIG_ARM64)
+#if !CONFIG_IS_ENABLED(SYS_DCACHE_OFF) && !defined(CONFIG_ARM64)
 void enable_caches(void)
 {
 	/* Enable D-cache. I-cache is already enabled in start.S */

@@ -12,6 +12,15 @@
 
 static int ss_base_mode;
 
+__weak u32 ss_get_addr_align(void)
+{
+#if defined(CONFIG_MACH_SUN50IW9)
+	return 2; /*addr must be word align, for aceess 4G space of ddr*/
+#else
+	return 0;
+#endif
+}
+
 __weak int ss_get_ver(void)
 {
 #ifdef SS_VER

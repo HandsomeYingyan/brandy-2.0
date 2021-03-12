@@ -194,14 +194,13 @@ __u32 USBC_WritePacket(__hdle hUSB, __u32 fifo, __u32 cnt, void *buff)
 
     //--<1>--调整数据
 	buf32 = buff;
-	len   = cnt;
-
-	
+	len   = i8 = cnt;
+#ifdef CONFIG_ARM
 	i32 = len >> 2;
 	i8  = len & 0x03;
 
 	// when buff is not 4 bytes align ,will data abort   ----wangwei
-	if(((u32)buf32)&0x03)
+	if (((unsigned long)buf32)&0x03)
 	{
 		buf8 = (__u8 *)buff;
 		i8 = len;
@@ -216,7 +215,7 @@ __u32 USBC_WritePacket(__hdle hUSB, __u32 fifo, __u32 cnt, void *buff)
 		
 		USBC_Writel(*buf32++, a64_fifo);
 	}
-
+#endif
     //--<3>--处理非4字节的部分
 	buf8 = (__u8 *)buf32;
 	while (i8--){

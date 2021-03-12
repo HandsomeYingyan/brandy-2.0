@@ -24,6 +24,6 @@ s32 de_snr_exit(u32 disp);
 s32 de_snr_get_reg_blocks(u32 disp,
 	struct de_reg_block **blks, u32 *blk_num);
 s32 de_snr_set_para(u32 disp, u32 chn,
-		    struct disp_layer_config_data **const pdata);
+		    struct disp_layer_config_data **const pdata, u32 layer_num);
 
 #endif /*End of file*/

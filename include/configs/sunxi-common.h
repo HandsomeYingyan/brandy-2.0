@@ -116,7 +116,7 @@
 
 #define CONFIG_NR_DRAM_BANKS		1
 #define PHYS_SDRAM_0			CONFIG_SYS_SDRAM_BASE
-#define PHYS_SDRAM_0_SIZE		0x80000000 /* 2 GiB */
+#define PHYS_SDRAM_0_SIZE		0x20000000 /* 512 MiB */
 
 #ifdef CONFIG_AHCI
 #define CONFIG_SCSI_AHCI_PLAT
@@ -153,19 +153,17 @@
 #define CONFIG_MMC_SUNXI_SLOT		0
 #endif
 
-
-#if  defined (CONFIG_MACH_SUN8IW18) || defined (CONFIG_MACH_SUN8IW19)
-#if defined (CONFIG_SUNXI_FREERTOS)
-#define CONFIG_SYS_MALLOC_LEN		(CONFIG_ENV_SIZE + (12 << 20))
+#ifdef SUNXI_SYS_MALLOC_LEN
+#define CONFIG_SYS_MALLOC_LEN		(CONFIG_ENV_SIZE + SUNXI_SYS_MALLOC_LEN)
 #else
+#if  defined (CONFIG_MACH_SUN8IW18) || defined (CONFIG_MACH_SUN8IW19)
 /* 20MB of malloc() pool */
 #define CONFIG_SYS_MALLOC_LEN		(CONFIG_ENV_SIZE + (20 << 20))
-#endif
 #else
 /* 64MB of malloc() pool */
 #define CONFIG_SYS_MALLOC_LEN		(CONFIG_ENV_SIZE + (64 << 20))
 #endif
-
+#endif
 /*
  * Miscellaneous configurable options
  */
@@ -298,5 +296,9 @@
 
 #define CONFIG_BOARD_LATE_INIT
 #define CONFIG_BOARD_EARLY_INIT_R
+
+#ifdef CONFIG_SUNXI_FPGA_PLATFORM
+#define FPGA_PLATFORM
+#endif
 
 #endif /* _SUNXI_COMMON_CONFIG_H */

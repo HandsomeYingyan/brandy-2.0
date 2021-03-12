@@ -57,18 +57,31 @@ static void snr_set_rcq_head_dirty(
 }
 
 s32 de_snr_set_para(u32 disp, u32 chn,
-		    struct disp_layer_config_data **const pdata)
+		    struct disp_layer_config_data **const pdata, u32 layer_num)
 {
 	struct de_snr_private *priv = &(snr_priv[disp][chn]);
 	struct snr_reg *reg = get_snr_reg(priv);
 	s32 ret = -1;
-	u32 layer_index = chn * de_feat_get_num_layers_by_chn(disp, chn);
-	struct disp_layer_info_inner *lay_info =
-		&(pdata[layer_index]->config.info);
+	u32 i = 0;
+	struct disp_layer_info_inner *lay_info = NULL;
 
 	/*this chn is not support*/
 	if (!de_feat_is_support_snr_by_chn(disp, chn))
 		goto OUT;
+
+	for (i = 0; i < layer_num; ++i) {
+		if (pdata[i]->config.channel == chn &&
+		    pdata[i]->config.info.snr.en) {
+			lay_info = &(pdata[i]->config.info);
+			break;
+		}
+	}
+
+	if (!lay_info) {
+		reg->snr_ctrl.bits.en = 0;
+		reg->snr_ctrl.bits.demo_en = 0;
+		goto DIRTY;
+	}
 
 	if (lay_info->fb.format != DISP_FORMAT_YUV422_SP_UVUV &&
 	    lay_info->fb.format != DISP_FORMAT_YUV422_SP_VUVU &&
@@ -82,15 +95,17 @@ s32 de_snr_set_para(u32 disp, u32 chn,
 	    lay_info->fb.format != DISP_FORMAT_YUV420_SP_VUVU_10BIT) {
 		reg->snr_ctrl.bits.en = 0;
 		reg->snr_ctrl.bits.demo_en = 0;
-		goto OUT;
+		goto DIRTY;
 	}
 
 	reg->snr_ctrl.bits.en = lay_info->snr.en;
 	reg->snr_ctrl.bits.demo_en = lay_info->snr.demo_en;
 	reg->demo_win_hor.bits.demo_horz_start = lay_info->snr.demo_win.x;
-	reg->demo_win_hor.bits.demo_horz_end = lay_info->snr.demo_win.x + lay_info->snr.demo_win.width;
+	reg->demo_win_hor.bits.demo_horz_end =
+	    lay_info->snr.demo_win.x + lay_info->snr.demo_win.width;
 	reg->demo_win_ver.bits.demo_vert_start = lay_info->snr.demo_win.y;
-	reg->demo_win_ver.bits.demo_vert_end = lay_info->snr.demo_win.y + lay_info->snr.demo_win.height;
+	reg->demo_win_ver.bits.demo_vert_end =
+	    lay_info->snr.demo_win.y + lay_info->snr.demo_win.height;
 	reg->snr_strength.bits.strength_y = lay_info->snr.y_strength;
 	reg->snr_strength.bits.strength_u = lay_info->snr.u_strength;
 	reg->snr_strength.bits.strength_v = lay_info->snr.v_strength;
@@ -98,16 +113,15 @@ s32 de_snr_set_para(u32 disp, u32 chn,
 	    (lay_info->snr.th_hor_line) ? lay_info->snr.th_hor_line : 0xa;
 	reg->snr_line_det.bits.th_ver_line =
 	    (lay_info->snr.th_ver_line) ? lay_info->snr.th_hor_line : 0xa;
-	reg->snr_size.bits.width = lay_info->fb.size[0].width - 1;
-	reg->snr_size.bits.height = lay_info->fb.size[0].height - 1;
+	reg->snr_size.bits.width = (lay_info->fb.crop.width >> 32) - 1;
+	reg->snr_size.bits.height = (lay_info->fb.crop.height >> 32) - 1;
 
-
+DIRTY:
 	priv->set_blk_dirty(priv, 0, 1);
 	ret = 0;
 OUT:
 	return ret;
 }
-
 
 s32 de_snr_init(u32 disp, u8 __iomem *de_reg_base)
 {
@@ -168,7 +182,6 @@ s32 de_snr_get_reg_blocks(u32 disp,
 	u32 chn;
 	u32 total = 0;
 
-	/*chn_num = de_feat_get_num_chns(disp);*/
 
 	if (blks == NULL) {
 		for (chn = 0; chn < MAX_CHN_NUM; ++chn)

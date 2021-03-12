@@ -37,6 +37,13 @@ enum NDFC_ENCODE {
 	BCH = 0,
 	LDPC,
 };
+
+enum DDR_INFO_NO_PARAS {
+	DDR_INFO_PARAS0_DEF = 0,
+	DDR_INFO_PARAS1_DRV_2 = 1,
+};
+
+
 /*
  *struct nand_chips_ops {
  *        int (*nand_chips_init)(struct nand_chip_info *chip);
@@ -426,32 +433,33 @@ struct itf_ops_t {
 
 /**
 * sunxi_nand_flash_device nand flash device id structure
-* @name: a human-readable name of the NAND chip
-* @mfr: manufacturer ID (the first byte of nand_id[])
-* @dev_id: device ID (the sencond byte of nand_id[])
-* @nand_id: the ID number of the nand flash chip
-* @die_cnt_per_chip:  the count of the die in one nand flash chip
-* @sect_cnt_per_page: the count of the sectors in one single physical page
-* @page_cnt_per_blk: the count of the pages in one single physical block
-* @blk_cnt_per_die: the count fo the physical blocks in one nand flash die
-* @operation_opt: the bitmap that marks which optional operation that the nand flash can support
-* @valid_blk_ratio: no use
-* @access_freq: the highest access frequence of the nand flash chip, based on mhz
-* @ecc_mode: the ecc mode for the nand flash chip, 0: bch-16, 1:bch-28, 2:bch_28 3:32 4:40 5:48 6:56 7:60 8:64 9:72
-* @read_retry_type: related to driver_no
-* @ddr_type: 0:sdr 1:null 2:onfi nvddr1 3:toggle ddr1 0x12: onfi ddr2 0x13: toggle ddr2
-* @ddr_opt: some ddr interface param config option
-* @bad_block_flag_position: manufacture bad block mark flag
-* @multi_plane_block_offset: abut plane block offset
-* @option_physic_op_no: the flash operation command set number
-* @ddr_info_no: ddr interface init information struct no.
-* @id_number:
-* @max_blk_erase_times:
-* @readrety_no: chose different manufacturers's readretry
-* @access_high_freq:
-* @random_cmd2_send_flag: special nand cmd for some nand in batch cmd,only for write  ,no use ,not reflected in id table
-* @random_addr_num: random col addr num in batch cmd, no use ,not reflected in id table
-* @nand_real_page_size: real physic page size ,no use ,not reflected in id table
+* @name : a human-readable name of the NAND chip
+* @mfr : manufacturer ID (the first byte of nand_id[])
+* @dev_id : device ID (the sencond byte of nand_id[])
+* @nand_id : the ID number of the nand flash chip
+* @die_cnt_per_chip :  the count of the die in one nand flash chip
+* @sect_cnt_per_page : the count of the sectors in one single physical page
+* @page_cnt_per_blk : the count of the pages in one single physical block
+* @blk_cnt_per_die : the count fo the physical blocks in one nand flash die
+* @operation_opt : the bitmap that marks which optional operation that the nand flash can support
+* @valid_blk_ratio : no use
+* @access_freq : the access frequence of the nand flash chip, based on mhz
+* @ecc_mode : the ecc mode for the nand flash chip, 0: bch-16, 1:bch-28, 2:bch_28 3:32 4:40 5:48 6:56 7:60 8:64 9:72
+* @read_retry_type : relate to readretry function
+* @ddr_type : 0:sdr 1:null 2:onfi nvddr1 3:toggle ddr1 0x12: onfi ddr2 0x13: toggle ddr2
+* @ddr_opt : some ddr interface param config option
+* @bad_block_flag_position : manufacture bad block mark flag
+* @multi_plane_block_offset : abut plane block offset
+* @cmd_set_no : the flash operation command set number
+* @ddr_info_no : ddr interface init information struct no.
+* @selected_write_boot0_no : boot0 interface choose
+* @selected_readretry_no : read retry interface choose
+* @id_number : drive no
+* @access_high_freq : maximum frequerence ,keep same with access_freq.
+* @max_blk_erase_times : maximum erasure times
+* @random_cmd2_send_flag : special nand cmd for some nand in batch cmd,only for write  ,no use ,not reflected in id table
+* @random_addr_num : random col addr num in batch cmd, no use ,not reflected in id table
+* @nand_real_page_size : real physic page size ,no use ,not reflected in id table
 */
 struct sunxi_nand_flash_device {
 	char *name;
@@ -475,9 +483,8 @@ struct sunxi_nand_flash_device {
 	unsigned int ddr_opt;
 	bad_position_t bad_block_flag_position;
 	unsigned int multi_plane_block_offset;
-	unsigned int cmd_no;
+	unsigned int cmd_set_no;
 	unsigned int ddr_info_no;
-	unsigned int option_physic_op_no;
 	unsigned int selected_write_boot0_no;
 	enum nand_readretry_type selected_readretry_no;
 	unsigned int id_number;

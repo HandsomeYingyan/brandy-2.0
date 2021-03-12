@@ -107,7 +107,7 @@ s32 bsp_disp_get_print_level(void);
 #define OSAL_PRINTF
 #define __inf(msg...)
 #define __msg(msg...)
-#define __wrn(fmt, msg...) printf(fmt, ##msg)
+#define __wrn(fmt, msg...) pr_notice(fmt, ##msg)
 #define __here
 #define __debug
 
@@ -572,6 +572,7 @@ typedef enum {
 typedef enum {
 	LCD_LVDS_IF_SINGLE_LINK		= 0,
 	LCD_LVDS_IF_DUAL_LINK		  = 1,
+	LCD_LVDS_IF_DUAL_LINK_SAME_SRC = 2,
 } disp_lcd_lvds_if;
 
 typedef enum {
@@ -735,11 +736,18 @@ typedef struct {
 	unsigned int            lcd_dclk_freq_original; //not need to config for user
 	unsigned int            ccir_clk_div; /*not need to config for user*/
 	unsigned int            input_csc;
+	unsigned int lcd_hv_data_polarity;
 } disp_panel_para;
 
 typedef enum {
 	DISP_MOD_DE = 0,
+#if defined(CONFIG_INDEPENDENT_DE)
+	DISP_MOD_DE1,
+#endif
 	DISP_MOD_DEVICE, //for timing controller common module
+#if defined(CONFIG_INDEPENDENT_DE)
+	DISP_MOD_DEVICE1,
+#endif
 	DISP_MOD_LCD0,
 	DISP_MOD_LCD1,
 	DISP_MOD_LCD2,
@@ -750,8 +758,13 @@ typedef enum {
 	DISP_MOD_DSI3,
 	DISP_MOD_HDMI,
 	DISP_MOD_LVDS,
+	DISP_MOD_LVDS1,
 	DISP_MOD_EINK,
 	DISP_MOD_EDMA,
+#if defined(CONFIG_INDEPENDENT_DE)
+	DISP_MOD_DPSS0,
+	DISP_MOD_DPSS1,
+#endif
 	DISP_MOD_NUM,
 } disp_mod_id;
 
@@ -915,6 +928,7 @@ struct disp_device {
 
 	disp_lcd_flow *(*get_open_flow)(struct disp_device *dispdev);
 	disp_lcd_flow *(*get_close_flow)(struct disp_device *dispdev);
+	int (*switch_compat_panel)(struct disp_device *dispdev, unsigned int index);
 	s32 (*pin_cfg)(struct disp_device *dispdev, u32 bon);
 	s32 (*set_gamma_tbl)(struct disp_device *dispdev, u32 *tbl, u32 size);
 	s32 (*enable_gamma)(struct disp_device *dispdev);

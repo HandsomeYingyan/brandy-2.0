@@ -1,4 +1,4 @@
-obj-y += clk_factor.o clk_periph.o clk.o clk_fixed_rate.o
+obj-y += clk_factor.o clk_periph.o clk.o clk_fixed_rate.o clk_fixed_factor.o
 obj-$(CONFIG_MACH_SUN8IW10) += clk-sun8iw10.o
 obj-$(CONFIG_MACH_SUN8IW5) += clk-sun8iw5.o
 obj-$(CONFIG_MACH_SUN8IW8) += clk-sun8iw8.o
@@ -18,3 +18,5 @@ obj-$(CONFIG_MACH_SUN8IW6) += clk-sun8iw6.o
 obj-$(CONFIG_MACH_SUN8IW15) += clk-sun8iw15.o
 obj-$(CONFIG_MACH_SUN8IW18) += clk-sun8iw18.o
 obj-$(CONFIG_MACH_SUN50IW9) += clk-sun50iw9.o
+obj-$(CONFIG_MACH_SUN50IW10) += clk-sun50iw10.o
+obj-$(CONFIG_MACH_SUN8IW19) += clk-sun8iw19.o

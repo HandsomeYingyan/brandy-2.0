@@ -14,6 +14,7 @@
 #include <android_image.h>
 #include <sunxi_image_verifier.h>
 #include <smc.h>
+#include <sunxi_verify_boot_info.h>
 
 static int sunxi_verify_embed_signature(void *buff, unsigned int len,
 					const char *cert_name, void *cert,
@@ -30,7 +31,11 @@ int sunxi_verify_os(ulong os_load_addr, const char *cert_name)
 	int ret;
 	struct andr_img_hdr *fb_hdr = (struct andr_img_hdr *)os_load_addr;
 
+#ifdef CONFIG_SUNXI_SWITCH_SYSTEM
 	char *part_name = env_get("boot_partition");
+#else
+	const char *part_name = cert_name;
+#endif
 
 	desc = blk_get_devnum_by_typename("sunxi_flash", 0);
 	if (desc == NULL)
@@ -40,21 +45,11 @@ int sunxi_verify_os(ulong os_load_addr, const char *cert_name)
 	if (ret < 0)
 		return -ENODEV;
 
-	total_len += fb_hdr->page_size;
-	total_len += ALIGN(fb_hdr->kernel_size, fb_hdr->page_size);
-	if (fb_hdr->second_size)
-		total_len += ALIGN(fb_hdr->second_size, fb_hdr->page_size);
-	if (fb_hdr->ramdisk_size)
-		total_len += ALIGN(fb_hdr->ramdisk_size, fb_hdr->page_size);
-	if (fb_hdr->recovery_dtbo_size)
-		total_len +=
-			ALIGN(fb_hdr->recovery_dtbo_size, fb_hdr->page_size);
-	if (fb_hdr->dtb_size)
-		total_len += ALIGN(fb_hdr->dtb_size, fb_hdr->page_size);
+	total_len = android_image_get_end(fb_hdr) - (ulong)fb_hdr;
 
-	printf("kernel len:%ld, part len:%ld\n", total_len, info.size * 512);
+	pr_msg("kernel len:%ld, part len:%ld\n", total_len, info.size * 512);
 	if (total_len > info.size * 512) {
-		printf("invalid kernel len\n");
+		pr_err("invalid kernel len\n");
 		return -1;
 	}
 	if (android_image_get_signature(fb_hdr, &sign_data, &sign_len))
@@ -82,17 +77,7 @@ static int android_image_get_signature(const struct andr_img_hdr *hdr,
 		return 0;
 	}
 
-	addr = (unsigned long)hdr;
-	addr += hdr->page_size;
-	addr += ALIGN(hdr->kernel_size, hdr->page_size);
-	if (hdr->ramdisk_size)
-		addr += ALIGN(hdr->ramdisk_size, hdr->page_size);
-	if (hdr->second_size)
-		addr += ALIGN(hdr->second_size, hdr->page_size);
-	if (hdr->recovery_dtbo_size)
-		addr += ALIGN(hdr->recovery_dtbo_size, hdr->page_size);
-	if (hdr->dtb_size)
-		addr += ALIGN(hdr->dtb_size, hdr->page_size);
+	addr = android_image_get_end(hdr);
 
 	*sign_data = (ulong)addr;
 	*sign_len  = hdr_ex->cert_size;
@@ -197,6 +182,9 @@ static int sunxi_verify_embed_signature(void *buff, uint len,
 		goto __ERROR_END;
 	}
 	free(cert_buf);
+#ifdef COFNIG_SUNXI_VERIFY_BOOT_INFO
+	sunxi_set_verify_boot_blob(SUNXI_VB_INFO_KEY, hash_of_file, 32);
+#endif
 	return 0;
 __ERROR_END:
 	if (cert_buf)
@@ -219,18 +207,22 @@ static int sunxi_verify_signature(void *buff, uint len, const char *cert_name)
 		return -1;
 	}
 	//sunxi_ss_close();
-	printf("show hash of file\n");
-	sunxi_dump(hash_of_file, 32);
+	pr_msg("show hash of file\n");
 
 	ret = smc_tee_check_hash(cert_name, hash_of_file);
 	if (ret == 0xFFFF000F) {
-		printf("optee return hash invalid\n");
+		sunxi_dump(hash_of_file, 32);
+		pr_err("optee return hash invalid\n");
 		return -1;
 	} else if (ret == 0) {
-		printf("image %s hash valid\n", cert_name);
+		pr_msg("image %s hash valid\n", cert_name);
+#ifdef COFNIG_SUNXI_VERIFY_BOOT_INFO
+		sunxi_set_verify_boot_blob(SUNXI_VB_INFO_KEY, hash_of_file, 32);
+#endif
 		return 0;
 	} else {
-		printf("image %s hash not found\n", cert_name);
+		sunxi_dump(hash_of_file, 32);
+		pr_err("image %s hash not found\n", cert_name);
 		return -1;
 	}
 }
@@ -350,9 +342,9 @@ static int cal_partioin_len(disk_partition_t *info)
 	}
 
 	len = (rootfs_sb->bytes_used + 4096 - 1) / 4096 * 4096;
-	printf("squashfs len:%ld, part len:%ld\n", len, info->size * 512);
+	pr_msg("squashfs len:%d, part len:%ld\n", len, info->size * 512);
 	if (len > info->size * 512) {
-		printf("invalid squashfs len\n");
+		pr_err("invalid squashfs len\n");
 		free(rootfs_sb);
 		return -1;
 	}
@@ -395,7 +387,7 @@ int sunxi_verify_partion(struct sunxi_image_verify_pattern_st *pattern,
 	}
 
 #if 0
-	printf("pattern size:%d, interval:%d,cnt:%d, whole_sample_len:%d, "
+	pr_msg("pattern size:%d, interval:%d,cnt:%d, whole_sample_len:%d, "
 		"cert_name : %s, full: %d\n", pattern->size, pattern->interval,
 		pattern->cnt, whole_sample_len, cert_name, full);
 #endif
@@ -413,7 +405,7 @@ int sunxi_verify_partion(struct sunxi_image_verify_pattern_st *pattern,
 	} else {
 		for (i = 0; i < pattern->cnt; i++) {
 	#if 0
-			printf("from %lx read %d block:to %p\n",
+			pr_msg("from %lx read %d block:to %p\n",
 			    info.start + i * pattern->interval / SECTOR_SIZE,
 			    pattern->size / SECTOR_SIZE, p + i * pattern->size);
 	#endif
@@ -472,7 +464,7 @@ U_BOOT_CMD(part_verify_test, 3, 0, do_part_verify_test,
 #include <sunxi_avb.h>
 int verify_image_by_vbmeta(const char *image_name, const uint8_t *image_data,
 			   size_t image_len, const uint8_t *vb_data,
-			   size_t vb_len)
+			   size_t vb_len, const char *pubkey_in_toc1)
 {
 	AvbDescriptor *desc = NULL;
 	AvbHashDescriptor *hdh;
@@ -481,10 +473,40 @@ int verify_image_by_vbmeta(const char *image_name, const uint8_t *image_data,
 	uint8_t *salt_buf;
 	size_t salt_buf_len;
 	ALLOC_CACHE_ALIGN_BUFFER(u8, hash_result, 32);
+	char slot_vbmeta[20] = "vbmeta";
+	char *slot_suffix    = env_get("slot_suffix");
+
+	memcpy(slot_vbmeta, pubkey_in_toc1, strlen(pubkey_in_toc1));
+	slot_vbmeta[strlen(pubkey_in_toc1)] = 0;
+	if (slot_suffix != NULL) {
+		strcat(slot_vbmeta, slot_suffix);
+	}
 
 	if (sunxi_avb_get_hash_descriptor_by_name(image_name, vb_data, vb_len,
 						  &desc)) {
 		pr_error("get descriptor for %s failed\n", image_name);
+		if (strcmp(image_name, pubkey_in_toc1) != 0) {
+			/*maybe signature is in the very partition, not vbmeta, try that*/
+			uint8_t *vb_meta_data = 0;
+			size_t vb_len;
+			int ret;
+			ret = sunxi_avb_read_vbmeta_in_partition(
+				image_name, &vb_meta_data, &vb_len);
+			if (ret == 0) {
+				ret = verify_image_by_vbmeta(
+					image_name, image_data, image_len,
+					vb_meta_data, vb_len, image_name);
+				if (ret == 0) {
+					pr_msg("verify passed with non vbmeta partition signature\n");
+				}
+			} else {
+				pr_error("read vbmeta in %s partition failed\n",
+					 image_name);
+			}
+			if (vb_meta_data)
+				free(vb_meta_data);
+			return ret;
+		}
 		return -1;
 	}
 
@@ -504,12 +526,12 @@ int verify_image_by_vbmeta(const char *image_name, const uint8_t *image_data,
 
 	if (ret == -2) {
 		if (sunxi_verify_signature((uint8_t *)vb_data, vb_len,
-					   "vbmeta")) {
+					   slot_vbmeta)) {
 			pr_error("hash compare is not correct\n");
 			goto descriptot_need_free;
 		}
 	} else {
-		if (check_public_in_rootcert("vbmeta", &sub_certif)) {
+		if (check_public_in_rootcert(slot_vbmeta, &sub_certif)) {
 			pr_error("self sign key verify failed\n");
 			goto descriptot_need_free;
 		}
@@ -566,4 +588,3 @@ descriptot_need_free:
 	return -1;
 }
 #endif
-

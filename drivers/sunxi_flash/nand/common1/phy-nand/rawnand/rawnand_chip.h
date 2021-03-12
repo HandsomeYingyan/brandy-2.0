@@ -61,4 +61,6 @@ s32 _check_scan_data(u32 first_check, u32 chip, u32 *scan_good_blk_no,
 void delete_nsi(void);
 int delete_nssi(void);
 
+extern int rawnand_read_parameter_page(struct nand_chip_info *nci, unsigned char *p);
+
 #endif /*RAWNADN_CHIP_H*/

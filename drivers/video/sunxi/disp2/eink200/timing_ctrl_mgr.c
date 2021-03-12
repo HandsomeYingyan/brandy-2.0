@@ -884,10 +884,14 @@ s32 timing_ctrl_mgr_enable(struct timing_ctrl_manager *mgr)
 		}
 	}
 
+	mgr->open_flow.func_num = 0;
 	if (mgr->panel_func.cfg_open_flow)
 		mgr->panel_func.cfg_open_flow();
-	else
+	else {
 		pr_err("%s:cfg_open_flow is NULL\n", __func__);
+		ret = -EINVAL;
+		return ret;
+	}
 
 	EINK_INFO_MSG("func num = %d\n", mgr->open_flow.func_num);
 	for (i = 0; i < mgr->open_flow.func_num; i++) {
@@ -904,14 +908,17 @@ s32 timing_ctrl_mgr_enable(struct timing_ctrl_manager *mgr)
 	return ret;
 }
 
-void timing_ctrl_mgr_disable(struct timing_ctrl_manager *mgr)
+int timing_ctrl_mgr_disable(struct timing_ctrl_manager *mgr)
 {
 	int i = 0;
 
+	mgr->close_flow.func_num = 0;
 	if (mgr->panel_func.cfg_close_flow)
 		mgr->panel_func.cfg_close_flow();
-	else
+	else {
 		pr_err("%s:cfg_close_flow is NULL\n", __func__);
+		return -1;
+	}
 
 	for (i = 0; i < mgr->close_flow.func_num; i++) {
 		if (mgr->close_flow.func[i].func) {
@@ -936,7 +943,7 @@ void timing_ctrl_mgr_disable(struct timing_ctrl_manager *mgr)
 		}
 	}
 
-	return;
+	return 0;
 }
 
 int timing_ctrl_mgr_init(struct init_para *para)

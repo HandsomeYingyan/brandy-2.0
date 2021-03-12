@@ -145,11 +145,11 @@ _sunxi_flash_spinor_read(uint start_block, uint nblock, void *buffer)
 	return ret == 0 ? nblock : 0;
 }
 
-#ifdef CONFIG_SUNXI_FREERTOS
+#ifdef CONFIG_SUNXI_RTOS
 static int
 sunxi_flash_spinor_read(uint start_block, uint nblock, void *buffer)
 {
-	return _sunxi_flash_spinor_read(CONFIG_SUNXI_FREERTOS_LOGICAL_OFFSET + start_block, nblock, buffer);
+	return _sunxi_flash_spinor_read(CONFIG_SUNXI_RTOS_LOGICAL_OFFSET + start_block, nblock, buffer);
 }
 
 #else
@@ -227,6 +227,9 @@ _sunxi_flash_spinor_write(uint start_block, uint nblock, void *buffer)
 			spinor_debug("write error\n");
 			goto __err;
 		}
+
+		free(align_buf);
+
 		/* update info */
 		len -= erase_align_size;
 		offset += erase_align_size;
@@ -242,11 +245,11 @@ __err:
 	return 0;
 }
 
-#ifdef CONFIG_SUNXI_FREERTOS
+#ifdef CONFIG_SUNXI_RTOS
 static int
 sunxi_flash_spinor_write(uint start_block, uint nblock, void *buffer)
 {
-	return _sunxi_flash_spinor_write(CONFIG_SUNXI_FREERTOS_LOGICAL_OFFSET + start_block, nblock, buffer);
+	return _sunxi_flash_spinor_write(CONFIG_SUNXI_RTOS_LOGICAL_OFFSET + start_block, nblock, buffer);
 }
 #else
 static int
@@ -255,6 +258,7 @@ sunxi_flash_spinor_write(uint start_block, uint nblock, void *buffer)
 	return _sunxi_flash_spinor_write(CONFIG_SPINOR_LOGICAL_OFFSET + start_block, nblock, buffer);
 }
 #endif
+
 static int
 sunxi_flash_spinor_phywrite(uint start_block, uint nblock, void *buffer)
 {
@@ -367,6 +371,10 @@ sunxi_flash_spinor_exit(int force)
 {
 	if(flash) {
 		spinor_debug("EXIT\n");
+		/*only finally exit*/
+		if (force == 2) {
+			spi_nor_reset_device(flash);
+		}
 		/*get efex cmd when finish partitions.
 		  but we still need to dwonload boot0 and uboot
 		  so can't free flash at this moment*/
@@ -428,30 +436,24 @@ sunxi_flash_spinor_download_spl(unsigned char *buffer, int len, unsigned int ext
 	return (len/512) == _sunxi_flash_spinor_write(0, len/512, buffer) ? 0 : -1;
 }
 
-#ifdef CONFIG_SUNXI_FREERTOS
+#ifdef CONFIG_SUNXI_RTOS
 static int
 sunxi_flash_spinor_download_toc(unsigned char *buffer, int len,  unsigned int ext)
 {
 	int ret;
 
-	printf("skip toc1\n");
-	return 0;
-#ifdef CONFIG_SUNXI_FREERTOS_OFFSET1
-	printf("download toc to %d\n", CONFIG_SUNXI_FREERTOS_OFFSET1);
-	ret = _sunxi_flash_spinor_write(CONFIG_SUNXI_FREERTOS_OFFSET1, len/512, buffer);
+#ifdef CONFIG_SUNXI_RTOS_OFFSET1
+	printf("download toc to %d\n", CONFIG_SUNXI_RTOS_OFFSET1);
+	ret = _sunxi_flash_spinor_write(CONFIG_SUNXI_RTOS_OFFSET1, len/512, buffer);
 	if (ret != (len/512))
 		return -1;
 #endif
 
-#ifdef CONFIG_SUNXI_FREERTOS_OFFSET2
-	if ((CONFIG_SUNXI_FREERTOS_OFFSET1 + len/512) <= CONFIG_SUNXI_FREERTOS_OFFSET2) {
-		printf("download toc to %d\n", CONFIG_SUNXI_FREERTOS_OFFSET2);
-		ret = _sunxi_flash_spinor_write(CONFIG_SUNXI_FREERTOS_OFFSET2, len/512, buffer);
-		if (ret != (len/512))
-			return -1;
-	} else {
-		printf("WARNING: freertos is too big, don't burn to offset2!\n");
-	}
+#ifdef CONFIG_SUNXI_RTOS_OFFSET2
+	printf("download toc to %d\n", CONFIG_SUNXI_RTOS_OFFSET2);
+	ret = _sunxi_flash_spinor_write(CONFIG_SUNXI_RTOS_OFFSET2, len/512, buffer);
+	if (ret != (len/512))
+		return -1;
 #endif
 
 	return 0;
@@ -461,11 +463,17 @@ sunxi_flash_spinor_download_toc(unsigned char *buffer, int len,  unsigned int ex
 static int
 sunxi_flash_spinor_download_toc(unsigned char *buffer, int len,  unsigned int ext)
 {
-
+	if (len / 512 + CONFIG_SPINOR_UBOOT_OFFSET >
+	    CONFIG_SPINOR_LOGICAL_OFFSET) {
+		printf("toc last block :0x%x, over write logical sector starts at block:0x%x\n"
+		       "stop toc download\n",
+		       CONFIG_SPINOR_UBOOT_OFFSET + len / 512,
+		       CONFIG_SPINOR_LOGICAL_OFFSET);
+		return -1;
+	}
 	return (len/512) == _sunxi_flash_spinor_write(CONFIG_SPINOR_UBOOT_OFFSET, len/512, buffer) ? 0 : -1;
-
 }
-#endif /* CONFIG_SUNXI_FREERTOS */
+#endif /* CONFIG_SUNXI_RTOS */
 
 
 int spinor_secure_storage_read( int item, unsigned char *buf, unsigned int len)

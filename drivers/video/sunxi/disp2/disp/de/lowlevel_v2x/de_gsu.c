@@ -42,6 +42,10 @@ int de_gsu_init(unsigned int sel, uintptr_t reg_base)
 	for (j = 0; j < chno; j++) {
 		gsu_base = reg_base + (sel + 1) * 0x00100000 + gsu_offset
 		+ j * 0x10000;
+#if defined(CONFIG_INDEPENDENT_DE)
+		if (sel)
+			gsu_base = gsu_base - 0x00100000;
+#endif
 
 		memory = kmalloc(sizeof(struct __gsu_reg_t),
 			GFP_KERNEL | __GFP_ZERO);

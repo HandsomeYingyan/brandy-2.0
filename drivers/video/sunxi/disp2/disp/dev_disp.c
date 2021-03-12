@@ -26,6 +26,7 @@ struct disp_layer_config2 lyr_cfg2[16];
 
 //uboot plat
 static u32    lcd_flow_cnt[2] = {0};
+static u32    lcd_open_flow_retry[2] = {0};
 static s8   lcd_op_finished[2] = {0};
 static struct timer_list lcd_timer[2];
 static s8   lcd_op_start[2] = {0};
@@ -103,14 +104,21 @@ static s32 copy_to_user(void *src, void* dest, u32 size)
 	return 0;
 }
 
+
 static void drv_lcd_open_callback(void *parg)
 {
 	disp_lcd_flow *flow = NULL;
 	u32 sel = (u32)parg;
 	s32 i = lcd_flow_cnt[sel]++;
-
 	flow = bsp_disp_lcd_get_open_flow(sel);
+
 	if (NULL == flow) {
+		if (lcd_open_flow_retry[sel] <= 10) {
+			lcd_open_flow_retry[sel]++;;
+			lcd_flow_cnt[sel] = 0;
+			drv_lcd_open_callback((void *)sel);
+			return;
+		}
 		printf("%s lcd open flow is NULL! LCD enable fail!\n",
 		       __func__);
 		lcd_op_start[sel] = 0;
@@ -158,6 +166,26 @@ static s8 drv_lcd_check_open_finished(u32 sel)
 		return lcd_op_finished[sel];
 	}
 
+	return 1;
+}
+
+int sunxi_get_lcd_op_finished(void)
+{
+	int i;
+	struct disp_manager *mgr    = NULL;
+	struct disp_device *dispdev = NULL;
+
+	for (i = 0; i < DISP_SCREEN_NUM; ++i) {
+		dispdev = NULL;
+		mgr     = g_disp_drv.mgr[i];
+		if (mgr)
+			dispdev = mgr->device;
+		if (dispdev) {
+			if (dispdev->type == DISP_OUTPUT_TYPE_LCD) {
+				return drv_lcd_check_open_finished(i);
+			}
+		}
+	}
 	return 1;
 }
 
@@ -370,6 +398,16 @@ s32 drv_disp_init(void)
 	}
 	counter ++;
 
+#if defined(CONFIG_INDEPENDENT_DE)
+	para->reg_base[DISP_MOD_DE1] = disp_getprop_regbase(FDT_DISP_PATH, "reg", counter);
+	if (!para->reg_base[DISP_MOD_DE1]) {
+		__wrn("unable to map de registers\n");
+		ret = -EINVAL;
+		goto exit;
+	}
+	counter++;
+#endif
+
 #if defined(HAVE_DEVICE_COMMON_MODULE)
 	para->reg_base[DISP_MOD_DEVICE] = disp_getprop_regbase(FDT_DISP_PATH, "reg", counter);
 	if (!para->reg_base[DISP_MOD_DEVICE]) {
@@ -378,6 +416,15 @@ s32 drv_disp_init(void)
 		goto exit;
 	}
 	counter ++;
+#if defined(CONFIG_INDEPENDENT_DE)
+	para->reg_base[DISP_MOD_DEVICE1] = disp_getprop_regbase(FDT_DISP_PATH, "reg", counter);
+	if (!para->reg_base[DISP_MOD_DEVICE1]) {
+		__wrn("unable to map device common module registers\n");
+		ret = -EINVAL;
+		goto exit;
+	}
+	counter++;
+#endif
 #endif
 
 	for (i=0; i<DISP_DEVICE_NUM; i++) {
@@ -472,6 +519,14 @@ s32 drv_disp_init(void)
 	}
 	counter ++;
 
+#if defined(CONFIG_INDEPENDENT_DE)
+	para->mclk[DISP_MOD_DE1] = of_clk_get(node_offset, counter);
+	if (IS_ERR(para->mclk[DISP_MOD_DE1])) {
+		printf("fail to get clk for de\n");
+	}
+	counter++;
+#endif
+
 #if defined(HAVE_DEVICE_COMMON_MODULE)
 	para->mclk[DISP_MOD_DEVICE] = of_clk_get(node_offset, counter);
 	if (IS_ERR(para->mclk[DISP_MOD_DEVICE])) {
@@ -480,6 +535,15 @@ s32 drv_disp_init(void)
 	counter ++;
 #endif
 
+#if defined(CONFIG_INDEPENDENT_DE)
+	for (i = 0; i < DISP_DEVICE_NUM; i++) {
+		para->mclk[DISP_MOD_DPSS0 + i] = of_clk_get(node_offset, counter);
+		if (IS_ERR(para->mclk[DISP_MOD_DPSS0 + i])) {
+			printf("fail to get clk for DPSS%d\n", i);
+		}
+		counter++;
+	}
+#endif
 	for (i=0; i<DISP_DEVICE_NUM; i++) {
 		para->mclk[DISP_MOD_LCD0 + i] = of_clk_get(node_offset, counter);
 		if (IS_ERR(para->mclk[DISP_MOD_LCD0 + i])) {
@@ -489,11 +553,13 @@ s32 drv_disp_init(void)
 	}
 
 #if defined(SUPPORT_LVDS)
-	para->mclk[DISP_MOD_LVDS] = of_clk_get(node_offset, counter);
-	if (IS_ERR(para->mclk[DISP_MOD_LVDS])) {
-		printf("fail to get clk for lvds\n");
+	for (i = 0; i < DEVICE_LVDS_NUM; i++) {
+		para->mclk[DISP_MOD_LVDS + i] = of_clk_get(node_offset, counter);
+		if (IS_ERR(para->mclk[DISP_MOD_LVDS + i])) {
+			printf("fail to get clk for lvds:%d\n", i);
+		}
+		counter++;
 	}
-	counter ++;
 #endif
 
 #if defined(SUPPORT_DSI)
@@ -640,7 +706,7 @@ int sunxi_disp_get_source_ops(struct sunxi_disp_source_ops *src_ops)
 	src_ops->sunxi_lcd_cpu_write_data = tcon0_cpu_wr_16b_data;
 	src_ops->sunxi_lcd_cpu_write_index = tcon0_cpu_wr_16b_index;
 	src_ops->sunxi_lcd_cpu_set_auto_mode = tcon0_cpu_set_auto_mode;
-
+	src_ops->sunxi_lcd_switch_compat_panel = bsp_disp_lcd_switch_compat_panel;
 	return 0;
 }
 
@@ -1211,6 +1277,34 @@ long disp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case DISP_MEM_GETADR:
 		return g_disp_mm[ubuffer[0]].mem_start;
 #endif
+
+	case DISP_LCD_BACKLIGHT_ENABLE:
+		{
+			if (mgr && mgr->device) {
+				if (mgr->device->pwm_enable) {
+					mgr->device->pwm_enable(mgr->device);
+				}
+				if (mgr->device->backlight_enable) {
+					mgr->device->backlight_enable(mgr->device);
+				}
+
+				return 0;
+			}
+			return -1;
+			break;
+		}
+	case DISP_LCD_BACKLIGHT_DISABLE:
+		{
+			if (mgr && mgr->device) {
+				if (mgr->device->pwm_disable)
+					mgr->device->pwm_disable(mgr->device);
+				if (mgr->device->backlight_disable)
+					mgr->device->backlight_disable(mgr->device);
+				return 0;
+			}
+			return -1;
+			break;
+		}
 
 	case DISP_SET_KSC_PARA:
 		{

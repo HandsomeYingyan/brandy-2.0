@@ -135,5 +135,13 @@ config PARTITION_TYPE_GUID
 	help
 	  Activate the configuration of GUID type
 	  for EFI partition
+config SUNXI_PARTITION_MAP_MAX
+	int "max allowed partition table"
+	default 32
+
+config LAST_PARTITION_NAME
+	string "set last partition name"
+	default "UDISK"
+	help
 
 endmenu

@@ -527,11 +527,7 @@ int disp_al_tv_cfg(u32 screen_id, struct disp_video_timings *video_info)
 	/*rgb_src_sel(screen_id);*/
 /*#endif*/
 	tcon1_set_timming(screen_id, video_info);
-#if defined (CONFIG_MACH_SUN50IW9)
-	tcon1_yuv_range(screen_id, 0);
-#else
 	tcon1_yuv_range(screen_id, 1);
-#endif
 	tcon1_src_select(screen_id, LCD_SRC_DE, al_priv.de_id[screen_id]);
 
 	return 0;

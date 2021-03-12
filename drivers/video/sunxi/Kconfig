@@ -85,10 +85,17 @@ config ENABLE_ADVERT_PICTURE
 	---help---
 	  Change bmp logo dynamic for advert
 
+config SUNXI_SPINOR_JPEG
+	bool "jpeg read interface for spinor"
+	depends on (SUNXI_FLASH)
+	default n
+	---help---
+	  jpeg read interface for spinor.Load jpeg from spino into memory
+
 config CMD_SUNXI_JPEG
 	bool "Sunxi JPEG display interface"
 	depends on (SUNXI_FLASH)
-	default n
+	default y if SUNXI_SPINOR_JPEG
 	---help---
 	  Load bmp from flash and display
 endmenu
@@ -156,6 +163,14 @@ config HDMI2_CEC_USER
   Say N here if you want to handle the cec message by Kernel.
   If unsure, say N.
 
+config HDMI2_FREQ_SPREAD_SPECTRUM
+  bool "new frequency spread spectrum(hershey) of sunxi"
+  depends on HDMI2_DISP2_SUNXI
+  default n
+  ---help---
+  Say Y here if you want to use new frequency spread spectrum(hershey) of sunxi.
+  Say N here if you do NOT want to new frequency spread spectrum of sunxi.
+  If unsure, say N
 
 config VDPO_DISP2_SUNXI
 	 bool "VDPO Driver Support(sunxi-disp2)"

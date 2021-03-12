@@ -149,6 +149,8 @@ extern unsigned long get_spare_head_size(void);
 
 enum UBOOT_FUNC_MASK_EN {
 	UBOOT_FUNC_MASK_BIT_BOOTLOGO = (1 << 0),
+	UBOOT_FUNC_MASK_BIT_FORCE_ROTPK = (1 << 1),
+	UBOOT_FUNC_MASK_BIT_BURN_ROTPK = (1 << 2),
 	UBOOT_FUNC_MASK_ALL	  = (0xFF)
 };
 #endif

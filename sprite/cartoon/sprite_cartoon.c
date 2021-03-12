@@ -20,6 +20,7 @@
 #include <sunxi_display2.h>
 #include <sunxi_board.h>
 #include <boot_gui.h>
+#include <sys_partition.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -75,7 +76,7 @@ int sprite_cartoon_screen_set(void)
 		return -1;
 	memset(sprite_source.screen_buf, 0, sprite_source.screen_size);
 
-	__msdelay(5);
+	mdelay(5);
 	return 0;
 }
 
@@ -147,14 +148,14 @@ int sprite_cartoon_test(int op)
 	do {
 		for (i = 0; i < 100; i += 50) {
 			sprite_cartoon_progressbar_upgrate(progressbar_hd, i);
-			__msdelay(500);
+			mdelay(500);
 			sprite_uichar_printf("here %d\n", i);
 		}
 
 		sprite_uichar_printf("up %d\n", i);
 		for (i = 99; i > 0; i -= 50) {
 			sprite_cartoon_progressbar_upgrate(progressbar_hd, i);
-			__msdelay(500);
+			mdelay(500);
 		}
 		sprite_uichar_printf("down %d\n", i);
 	}
@@ -190,7 +191,6 @@ uint sprite_cartoon_create(int op)
 
 		return -1;
 	}
-	board_display_show_until_lcd_open(0);
 
 	struct canvas *cv = NULL;
 	cv = fb_lock(FB_ID_0);

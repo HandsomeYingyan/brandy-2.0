@@ -717,7 +717,7 @@ static s32 __get_offset(char *main_key, u32 i)
 	snprintf(sub_key, sizeof(sub_key), "dac_offset%u", i);
 
 	ret = disp_sys_script_get_item(main_key, sub_key, &value, 1);
-	if (ret >= 0) {
+	if (ret == 1) {
 		/* Sysconfig can not use signed params, however,
 		 * dac_offset as a signed param which ranges from
 		 * -100 to 100, is maping sysconfig params from

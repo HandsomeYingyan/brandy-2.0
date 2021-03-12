@@ -35,11 +35,21 @@
 #include <part_efi.h>
 #include <fdt_support.h>
 #include <sunxi_image_verifier.h>
+#include <asm/arch/rtc.h>
+#include <sys_partition.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
 #define MMC_LOGICAL_OFFSET   (20 * 1024 * 1024/512)
 #define GPT_BUFF_SIZE        (8*1024)
+
+#ifdef CONFIG_SUNXI_SPINOR
+#ifdef CONFIG_SUNXI_RTOS
+#define SPINOR_LOGICAL_OFFSET CONFIG_SUNXI_RTOS_LOGICAL_OFFSET
+#else
+#define SPINOR_LOGICAL_OFFSET CONFIG_SPINOR_LOGICAL_OFFSET
+#endif
+#endif
 
 int sunxi_mbr_convert_to_gpt(void *sunxi_mbr_buf, char *gpt_buf,int storage_type);
 int download_standard_gpt(void *sunxi_mbr_buf, size_t buf_size, int storage_type);
@@ -87,22 +97,22 @@ static int compare_image_and_flash_size(u8 *buf)
 		memset(buffer, 0, 32);
 		memcpy(buffer, part_info->name, 16);
 		//NOTE : Use UDISK addrlo as the size of image
-		if (!strcmp(buffer, "UDISK")) {
+		if ((!strcmp(buffer, "UDISK")) || (!strcmp(buffer, CONFIG_LAST_PARTITION_NAME))) {
 			logic_size = part_info->addrlo;
 		}
 	}
 	flash_size = sunxi_flash_size();
-	printf("logic size : 0x%x sector(512 byte)\n", logic_size);
-	printf("flash size : 0x%x sector(512 byte)\n", flash_size);
+	pr_msg("logic size : 0x%x sector(512 byte)\n", logic_size);
+	pr_msg("flash size : 0x%x sector(512 byte)\n", flash_size);
 
 	if (flash_size == 0) {
-		printf("flash size is zero, ignore check\n");
+		pr_msg("flash size is zero, ignore check\n");
 		return 0;
 	}
 	if (flash_size > logic_size) {
 		return 0;
 	} else {
-		printf("error : logic_size biger than flash_size\n");
+		pr_err("error : logic_size biger than flash_size\n");
 		return -1;
 	}
 }
@@ -125,22 +135,23 @@ int sunxi_sprite_download_mbr(void *buffer, uint buffer_size)
 
 #ifdef CONFIG_SUNXI_COMPARE_IMAGE_AND_FLASH
 	if (compare_image_and_flash_size(buffer)) {
-		printf("please check you image and flash size!\n");
-		printf("=============Exit burning now=============\n");
+		pr_err("please check you image and flash size!\n");
+		pr_err("=============Exit burning now=============\n");
 		return -1;
 	}
 #endif
 
 	storage_type = get_boot_storage_type();
-	if(sunxi_sprite_init(0)) {
+	if ((storage_type == STORAGE_NAND) && (sunxi_sprite_init(0))) {
 		return -2;
 	}
-
 	/*write GPT Table*/
 	ret = download_standard_gpt(buffer,buffer_size,storage_type);
 	if(ret) {
 		return -3;
 	}
+	pr_msg("update partition map\n");
+	sunxi_probe_partition_map();
 
 	return ret;
 
@@ -166,13 +177,37 @@ int sunxi_sprite_download_uboot(void *buffer, int production_media, int generate
 
 	printf("uboot size = 0x%x\n", length);
 	printf("storage type = %d\n", production_media);
-#ifdef CONFIG_SUNXI_BURN_ROTPK_ON_SPRITE
+#if defined(CONFIG_SUNXI_BURN_ROTPK_ON_SPRITE) || \
+	defined(CONFIG_SUNXI_ROTPK_BURN_ENABLE_BY_TOOL)
 	sunxi_verify_preserve_toc1(buffer);
 #endif
 
 	return sunxi_sprite_download_toc(buffer, length, production_media);
 
 }
+
+#if defined(CONFIG_SUNXI_ROTPK_BURN_ENABLE_BY_TOOL)
+int set_rotpk_flag(unsigned char *flag)
+{
+	if ((uboot_spare_head.boot_data.func_mask &
+			UBOOT_FUNC_MASK_BIT_BURN_ROTPK) !=
+			UBOOT_FUNC_MASK_BIT_BURN_ROTPK) {
+		printf("tool did not set rotpk burn flag, skip rotpk burn\n");
+		*flag = 0;
+		return 0;
+	}
+	if (gd->securemode == SUNXI_NORMAL_MODE) {
+		printf("normal mode, don't need set rotpk flag\n");
+		*flag = 0;
+		return 0;
+	}
+
+	printf("set rotpk flag to toc0 header\n");
+	*flag = 1;
+
+	return 0;
+}
+#endif
 
 int download_secure_boot0(void *buffer, int production_media)
 {
@@ -200,6 +235,7 @@ int download_secure_boot0(void *buffer, int production_media)
 
 		return -1;
 	}
+#ifdef CONFIG_SUNXI_TURNNING_FLASH
 	//update flash param
 	if(!production_media)
 	{
@@ -219,39 +255,48 @@ int download_secure_boot0(void *buffer, int production_media)
 #ifdef CONFIG_SUNXI_SDMMC
 		//storage_data[384];  // 0-159:nand info  160-255:card info
 		if (production_media == STORAGE_EMMC) {
-			if (mmc_write_info(2,(void *)(toc0_config->storage_data+160),384-160)){
+			if (mmc_write_info(2, (void *)(toc0_config->storage_data+160), 384-160)) {
 				printf("add sdmmc2 gpio info fail!\n");
 				return -1;
 			}
 		} else if (production_media == STORAGE_EMMC3) {
-			if (mmc_write_info(3,(void *)(toc0_config->storage_data+160),384-160)){
+			if (mmc_write_info(3, (void *)(toc0_config->storage_data+160), 384-160)) {
 				printf("add sdmmc3 gpio info fail!\n");
+				return -1;
+			}
+		} else if (production_media == STORAGE_EMMC0) {
+			if (mmc_write_info(0, (void *)(toc0_config->storage_data+160), 384-160)) {
+				printf("add sdmmc0 gpio info fail!\n");
 				return -1;
 			}
 		}
 #endif
 	}
+#endif
 
+#ifdef CONFIG_SUNXI_TURNNING_DRAM
 	//update dram param
 	if (uboot_spare_head.boot_data.work_mode == WORK_MODE_CARD_PRODUCT ||
-		uboot_spare_head.boot_data.work_mode == WORK_MODE_UDISK_UPDATE)
-	{
+		(uboot_spare_head.boot_data.work_mode == WORK_MODE_BOOT && get_boot_dram_update_flag())) {
 		memcpy((void *)toc0_config->dram_para, (void *)(uboot_spare_head.boot_data.dram_para), 32 * 4);
 		/*update dram flag*/
 		set_boot_dram_update_flag(toc0_config->dram_para);
-	}
-	else if (uboot_spare_head.boot_data.work_mode == WORK_MODE_SPRITE_RECOVERY)
-	{
-		printf("skip memcpy dram para for work_mode recovery\n");
-	}
-	else
-	{
+	} else if (uboot_spare_head.boot_data.work_mode == WORK_MODE_UDISK_UPDATE ||
+			uboot_spare_head.boot_data.work_mode == WORK_MODE_CARD_UPDATE ||
+			uboot_spare_head.boot_data.work_mode == WORK_MODE_SPRITE_RECOVERY ||
+			uboot_spare_head.boot_data.work_mode ==  WORK_MODE_BOOT) {
+		printf("skip memcpy dram para for work_mode: %d \n", uboot_spare_head.boot_data.work_mode);
+	} else {
 		memcpy((void *)toc0_config->dram_para, (void *)CONFIG_DRAM_PARA_ADDR, 32 * 4);
 		/*update dram flag*/
 		set_boot_dram_update_flag(toc0_config->dram_para);
 	}
-
+#endif
 	dump_dram_para( toc0_config->dram_para,32);
+
+#if defined(CONFIG_SUNXI_ROTPK_BURN_ENABLE_BY_TOOL)
+	set_rotpk_flag(&toc0_config->rotpk_flag);
+#endif
 
 	/* regenerate check sum */
 	toc0->check_sum = sunxi_sprite_generate_checksum(buffer, toc0->length, toc0->check_sum);
@@ -287,7 +332,7 @@ int download_normal_boot0(void *buffer, int production_media)
 		printf("sunxi sprite: boot0 checksum is error\n");
 		return -1;
 	}
-
+#ifdef CONFIG_SUNXI_TURNNING_FLASH
 	if(!production_media) {
 #ifdef CONFIG_SUNXI_UBIFS
 		if (nand_use_ubi()) {
@@ -314,11 +359,19 @@ int download_normal_boot0(void *buffer, int production_media)
 				printf("add sdmmc3 private info fail!\n");
 				return -1;
 			}
+		} else if (production_media == STORAGE_EMMC0) {
+			if (mmc_write_info(0, (void *)boot0->prvt_head.storage_data, STORAGE_BUFFER_SIZE)) {
+				printf("add sdmmc0 private info fail!\n");
+				return -1;
+			}
 		}
 #endif
 	}
+#endif
 
-	if (uboot_spare_head.boot_data.work_mode == WORK_MODE_CARD_PRODUCT) {
+#ifdef CONFIG_SUNXI_TURNNING_DRAM
+	if (uboot_spare_head.boot_data.work_mode == WORK_MODE_CARD_PRODUCT ||
+		(uboot_spare_head.boot_data.work_mode == WORK_MODE_BOOT && get_boot_dram_update_flag())) {
 		memcpy((void *)&boot0->prvt_head.dram_para, (void *)(uboot_spare_head.boot_data.dram_para), 32 * 4);
 		/*update dram flag*/
 		set_boot_dram_update_flag(boot0->prvt_head.dram_para);
@@ -332,6 +385,7 @@ int download_normal_boot0(void *buffer, int production_media)
 		/*update dram flag*/
 		set_boot_dram_update_flag(boot0->prvt_head.dram_para);
 	}
+#endif
 	dump_dram_para(boot0->prvt_head.dram_para,32);
 
 	/* regenerate check sum */
@@ -351,6 +405,10 @@ int sunxi_sprite_download_boot0(void *buffer, int production_media)
 	} else {
 		return download_secure_boot0(buffer, production_media);
 	}
+	/* usb dma recv time out maybe enter usb product twice
+	 * brom enter fel mode or boot0 enter fel mode
+	 */
+	rtc_set_bootmode_flag(0);
 }
 
 int gpt_convert_to_sunxi_mbr(void *sunxi_mbr_buf, char *gpt_buf, int storage_type)
@@ -365,20 +423,6 @@ int gpt_convert_to_sunxi_mbr(void *sunxi_mbr_buf, char *gpt_buf, int storage_typ
 	int crc32_total;
 	int mbr_size = 0;
 	u64 start_sector;
-	u32 logic_offset = 0;
-
-	if(storage_type == STORAGE_EMMC || storage_type == STORAGE_EMMC3
-		|| storage_type == STORAGE_SD) {
-		logic_offset = MMC_LOGICAL_OFFSET;
-	} else if(storage_type == STORAGE_NOR) {
-#ifdef CONFIG_SUNXI_FREERTOS
-		logic_offset = CONFIG_SUNXI_FREERTOS_LOGICAL_OFFSET;
-#else
-		logic_offset = CONFIG_SPINOR_LOGICAL_OFFSET;
-#endif
-	} else {
-		logic_offset = 0;
-	}
 
 	/* mbr_size = 256; [> hardcode, TODO: fixit <] */
 	/* mbr_size = mbr_size * (1024/512); */
@@ -424,7 +468,7 @@ int gpt_convert_to_sunxi_mbr(void *sunxi_mbr_buf, char *gpt_buf, int storage_typ
 		printf("%d starting_lba:%llx ending_lba:%llx\n", i, pgpt_entry->starting_lba, pgpt_entry->ending_lba);
 		if (i == 0) {
 			/* mbr_size = pgpt_entry->ending_lba - 511; */
-			mbr_size = pgpt_entry->starting_lba - logic_offset;
+			mbr_size = pgpt_entry->starting_lba;
 			printf("mbr sector size:%x\n", mbr_size);
 		}
 
@@ -481,6 +525,29 @@ __weak int sunxi_sprite_erase_flash(void *mbr)
 }
 #endif
 
+void sunxi_get_logical_offset_param(int storage_type, u32 *logic_offset,
+				    int *total_sectors)
+{
+	/*
+	 * for nand, no phyread available, so this is not relevant
+	 * for mmc, part offset is physical offset, offset should be taken care in start value, refer by logic_offset here
+	 * for nor, part offset is logical offset, offset should be taken care in end value, refer by total_sectors here
+	 */
+	if (storage_type == STORAGE_EMMC || storage_type == STORAGE_EMMC3 ||
+	    storage_type == STORAGE_SD || storage_type == STORAGE_EMMC0) {
+		*logic_offset = MMC_LOGICAL_OFFSET;
+	} else {
+		*logic_offset = 0;
+	}
+
+	*total_sectors = sunxi_sprite_size();
+#ifdef CONFIG_SUNXI_SPINOR
+	if (storage_type == STORAGE_NOR) {
+		*total_sectors -= SPINOR_LOGICAL_OFFSET;
+	}
+#endif
+}
+
 int sunxi_mbr_convert_to_gpt(void *sunxi_mbr_buf, char *gpt_buf,int storage_type)
 {
 	legacy_mbr   *remain_mbr;
@@ -509,21 +576,7 @@ int sunxi_mbr_convert_to_gpt(void *sunxi_mbr_buf, char *gpt_buf,int storage_type
 		return 0;
 	}
 
-	if(storage_type == STORAGE_EMMC || storage_type == STORAGE_EMMC3
-		|| storage_type == STORAGE_SD) {
-		logic_offset = MMC_LOGICAL_OFFSET;
-	} else if(storage_type == STORAGE_NOR) {
-#ifdef CONFIG_SUNXI_FREERTOS
-		logic_offset = CONFIG_SUNXI_FREERTOS_LOGICAL_OFFSET;
-#else
-		logic_offset = CONFIG_SPINOR_LOGICAL_OFFSET;
-#endif
-	} else {
-		logic_offset = 0;
-	}
-	printf("logic_offset:0x%x\n", logic_offset);
-
-	total_sectors = sunxi_sprite_size();
+	sunxi_get_logical_offset_param(storage_type, &logic_offset, &total_sectors);
 
 	/* 1. LBA0: write legacy mbr,part type must be 0xee */
 	remain_mbr = (legacy_mbr *)pbuf;
@@ -547,19 +600,15 @@ int sunxi_mbr_convert_to_gpt(void *sunxi_mbr_buf, char *gpt_buf,int storage_type
 	gpt_head->header_crc32 = 0x00;
 	gpt_head->reserved1 = 0x0;
 	gpt_head->my_lba = 0x01;
-#ifdef CONFIG_SUNXI_NOT_BACKUP_GPT
-	gpt_head->alternate_lba = 0;
-#else
 	gpt_head->alternate_lba = total_sectors - 1;
-#endif
 	gpt_head->first_usable_lba = sunxi_mbr->array[0].addrlo + logic_offset;
-#ifdef CONFIG_SUNXI_NOT_BACKUP_GPT
-	/*Do not reserve backup space(1 GPT head + 32 GPT entry)*/
-	gpt_head->last_usable_lba = total_sectors - 1;
-#else
-	/*1 GPT head + 32 GPT entry*/
-	gpt_head->last_usable_lba = total_sectors - (1 + 32) - 1;
-#endif
+	if (storage_type == STORAGE_NOR) {
+		/*spinor do not have much space, drop backup gpt to enlarge UDISK*/
+		gpt_head->last_usable_lba = total_sectors - 1;
+	} else {
+		/*room for backup GPT consider "unsable":1 GPT head + 32 GPT entry*/
+		gpt_head->last_usable_lba = total_sectors - (1 + 32) - 1;
+	}
 	memcpy(gpt_head->disk_guid.b,guid,16);
 	gpt_head->partition_entry_lba = 2;
 	gpt_head->num_partition_entries = sunxi_mbr->PartCount;
@@ -607,8 +656,17 @@ int sunxi_mbr_convert_to_gpt(void *sunxi_mbr_buf, char *gpt_buf,int storage_type
 
 		//ASCII to unicode
 		memset(pgpt_entry->partition_name, 0,PARTNAME_SZ*sizeof(efi_char16_t));
-		for(j=0;j < strlen((const char *)sunxi_mbr->array[i].name);j++ ) {
-			pgpt_entry->partition_name[j] = (efi_char16_t)sunxi_mbr->array[i].name[j];
+		if (!strncmp((char *)sunxi_mbr->array[i].name, "UDISK", sizeof("UDISK"))) {
+			char temp_partition_name[16] = {CONFIG_LAST_PARTITION_NAME};
+			for (j = 0; j < strlen((const char *)temp_partition_name); j++) {
+				pgpt_entry->partition_name[j] = (efi_char16_t)temp_partition_name[j];
+			}
+			/* update last partiton name ok set gpt_head->reserved1 = 0x1 */
+			gpt_head->reserved1 = 0x1;
+		} else {
+			for (j = 0; j < strlen((const char *)sunxi_mbr->array[i].name); j++) {
+				pgpt_entry->partition_name[j] = (efi_char16_t)sunxi_mbr->array[i].name[j];
+			}
 		}
 		data_len += GPT_ENTRY_SIZE;
 
@@ -618,18 +676,10 @@ int sunxi_mbr_convert_to_gpt(void *sunxi_mbr_buf, char *gpt_buf,int storage_type
 	gpt_head->partition_entry_array_crc32 = crc32(0, (unsigned char const *)gpt_entry_start,
 	             (gpt_head->num_partition_entries)*(gpt_head->sizeof_partition_entry));
 
-#ifdef CONFIG_SUNXI_FREERTOS
-	printf("gpt_head->partition_entry_array_crc32 = 0x%x\n",gpt_head->partition_entry_array_crc32);
-#else
 	debug("gpt_head->partition_entry_array_crc32 = 0x%x\n",gpt_head->partition_entry_array_crc32);
-#endif
 	//gpt crc
 	gpt_head->header_crc32 = crc32(0,(const unsigned char *)gpt_head, sizeof(gpt_header));
-#ifdef CONFIG_SUNXI_FREERTOS
-	printf("gpt_head->header_crc32 = 0x%x\n",gpt_head->header_crc32);
-#else
 	debug("gpt_head->header_crc32 = 0x%x\n",gpt_head->header_crc32);
-#endif
 
 	/* 4. LBA-1: the last sector fill backup gpt header */
 
@@ -647,13 +697,18 @@ int download_standard_gpt(void *sunxi_mbr_buf, size_t buf_size, int storage_type
 	int  gpt_buf_len = 8*1024;
 
 #ifdef CONFIG_SUNXI_UBIFS
-	if (nand_use_ubi()) {
+	if (((STORAGE_SPI_NAND == get_boot_storage_type_ext()) ||
+			(STORAGE_NAND == get_boot_storage_type_ext())) && nand_use_ubi()) {
 		printf("force mbr\n");
 		ret = sunxi_sprite_write(0, buf_size>>9, sunxi_mbr_buf);
 		if (!ret) {
 			printf("%s:write mbr sectors fail ret = %d\n", __func__, ret);
+			sunxi_sprite_write_end();
+			sunxi_sprite_flush();
 			return -1;
 		}
+		sunxi_sprite_write_end();
+		sunxi_sprite_flush();
 		return 0;
 	}
 #endif
@@ -676,39 +731,43 @@ int download_standard_gpt(void *sunxi_mbr_buf, size_t buf_size, int storage_type
 		goto __err_end;
 	}
 	/*write GPT for kenerl use if sdmmc*/
-	if (STORAGE_EMMC == storage_type || STORAGE_EMMC3 == storage_type) {
+	if (STORAGE_EMMC == storage_type || STORAGE_EMMC3 == storage_type
+			|| storage_type == STORAGE_EMMC0) {
 		ret = sunxi_sprite_phywrite(0, (data_len + 511) >> 9, gpt_buf);
 		if (!ret)
 			goto __err_end;
 	}
 	printf("write primary GPT success\n");
 
-#ifndef CONFIG_SUNXI_NOT_BACKUP_GPT
 	gpt_head = (gpt_header *)(gpt_buf + GPT_HEAD_OFFSET);
 	prepare_backup_gpt_header(gpt_head);
 
-	if(STORAGE_EMMC == storage_type || STORAGE_EMMC3 == storage_type
-		|| STORAGE_NOR == storage_type)
-		flash_write_pt  = sunxi_sprite_phywrite;
-	else
-		flash_write_pt  = sunxi_sprite_write;
+	if (STORAGE_NOR == storage_type) {
+		printf("spinor: skip backup GPT\n");
+	} else {
+		if (STORAGE_EMMC == storage_type ||
+		    STORAGE_EMMC3 == storage_type ||
+		    storage_type == STORAGE_EMMC0)
+			flash_write_pt = sunxi_sprite_phywrite;
+		else
+			flash_write_pt = sunxi_sprite_write;
 
-	/* write back-up gpt PTE */
-	ret = flash_write_pt(gpt_head->last_usable_lba + 1,
-		(GPT_BUFF_SIZE-GPT_ENTRY_OFFSET)/512,
-		gpt_buf+GPT_ENTRY_OFFSET);
-	if(!ret) {
-		goto __err_end;
-	}
+		/* write back-up gpt PTE */
+		ret = flash_write_pt(gpt_head->last_usable_lba + 1,
+				     (GPT_BUFF_SIZE - GPT_ENTRY_OFFSET) / 512,
+				     gpt_buf + GPT_ENTRY_OFFSET);
+		if (!ret) {
+			goto __err_end;
+		}
 
-	/* write back-up gpt HEAD */
-	ret = flash_write_pt(gpt_head->my_lba, 1,
-		gpt_buf+GPT_HEAD_OFFSET);
-	if(!ret) {
-		goto __err_end;
+		/* write back-up gpt HEAD */
+		ret = flash_write_pt(gpt_head->my_lba, 1,
+				     gpt_buf + GPT_HEAD_OFFSET);
+		if (!ret) {
+			goto __err_end;
+		}
+		printf("write Backup GPT success\n");
 	}
-	printf("write Backup GPT success\n");
-#endif
 
 	free(gpt_buf);
 	return 0;
@@ -718,6 +777,134 @@ __err_end:
 	return -1;
 
 }
+
+#define GPT_UPDATE_BUF_SIZE (GPT_BUFF_SIZE - GPT_ENTRY_OFFSET)
+
+int sunxi_update_gpt(void)
+{
+#ifdef CONFIG_SUNXI_UBIFS
+	return 0;
+#endif
+	typedef int (*FLASH_WIRTE)(uint start_block, uint nblock, void *buffer);
+	FLASH_WIRTE flash_write_pt = NULL;
+	char *buf;
+	int   data_len = GPT_UPDATE_BUF_SIZE;
+	int   ret = 0;
+	int storage_type = get_boot_storage_type();
+	int i, j;
+
+	char char8_name[PARTNAME_SZ] = { 0 };
+	buf = (char *)memalign(CONFIG_SYS_CACHELINE_SIZE, GPT_UPDATE_BUF_SIZE);
+	if (buf == NULL) {
+		pr_err("malloc fail\n");
+		return -1;
+	}
+	char  *gpt_buf = buf;
+	gpt_header *gpt_head     = (gpt_header *)(buf + GPT_HEAD_OFFSET);
+	gpt_entry *entry             = (gpt_entry *)(buf + GPT_ENTRY_OFFSET);
+	if ((storage_type == STORAGE_SD) || (storage_type == STORAGE_EMMC)
+		|| (storage_type == STORAGE_EMMC0))
+		sunxi_flash_phyread(0, GPT_BUFF_SIZE, buf);
+	else
+		sunxi_flash_read(0, GPT_BUFF_SIZE, buf);
+	if (gpt_head->reserved1 != 1) {
+		if (gpt_head->signature == GPT_HEADER_SIGNATURE) {
+			u32 calc_crc32   = 0;
+			u32 backup_crc32 = 0;
+
+			backup_crc32	   = gpt_head->header_crc32;
+			gpt_head->header_crc32 = 0;
+			calc_crc32 = crc32(0, (const unsigned char *)gpt_head,
+					   sizeof(gpt_header));
+			gpt_head->header_crc32 = backup_crc32;
+			if (calc_crc32 != backup_crc32) {
+				printf("the GPT table is bad\n");
+				goto __err_end;
+			}
+			/* gpt_show_partition_info(buffer); */
+		}
+		for (i = 0; i < gpt_head->num_partition_entries; i++) {
+			for (j = 0; j < PARTNAME_SZ; j++) {
+				char8_name[j] = (char)(entry[i].partition_name[j]);
+			}
+
+			if ((get_boot_work_mode() == WORK_MODE_BOOT) && (!strncmp(char8_name, "UDISK", sizeof("UDISK")))) {
+				char temp_partition_name[16] = {CONFIG_LAST_PARTITION_NAME};
+				for (j = 0; j < strlen((const char *)temp_partition_name); j++) {
+					entry[i].partition_name[j] = (efi_char16_t)temp_partition_name[j];
+				}
+				/* update last partiton name ok set gpt_head->reserved1 = 0x1 */
+				gpt_head->reserved1 = 0x1;
+				for (j = 0; j < PARTNAME_SZ; j++) {
+					char8_name[j] = (char)(entry[i].partition_name[j]);
+				}
+				pr_msg("GPT:%-12s: %-12llx  %-12llx\n", char8_name,
+						entry[i].starting_lba, entry[i].ending_lba);
+				break;
+			}
+			pr_msg("GPT:%-12s: %-12llx  %-12llx\n", char8_name,
+					entry[i].starting_lba, entry[i].ending_lba);
+		}
+
+		gpt_head->partition_entry_array_crc32 = 0;
+		gpt_head->partition_entry_array_crc32 = crc32(0, (unsigned char const *)entry,
+			(gpt_head->num_partition_entries)*(gpt_head->sizeof_partition_entry));
+
+		//gpt crc32
+		gpt_head->header_crc32 = 0;
+		gpt_head->header_crc32 = crc32(0, (const unsigned char *)gpt_head, gpt_head->header_size);
+		/*write GPT for u-boot use*/
+		ret = sunxi_sprite_write(0, (data_len+511)>>9, gpt_buf);
+		if (!ret) {
+			debug("%s:write gpt sectors fail\n", __func__);
+			goto __err_end;
+		}
+		/*write GPT for kenerl use if sdmmc*/
+		if (STORAGE_EMMC == storage_type || STORAGE_EMMC3 == storage_type
+				|| storage_type == STORAGE_EMMC0 || storage_type == STORAGE_SD) {
+			ret = sunxi_sprite_phywrite(0, (data_len + 511) >> 9, gpt_buf);
+			if (!ret)
+				goto __err_end;
+		}
+		pr_msg("write primary GPT success\n");
+
+		prepare_backup_gpt_header(gpt_head);
+
+		if (STORAGE_NOR == storage_type) {
+			pr_msg("spinor: skip backup GPT\n");
+		} else {
+			if (STORAGE_EMMC == storage_type ||
+				STORAGE_EMMC3 == storage_type ||
+				storage_type == STORAGE_EMMC0 ||
+				storage_type == STORAGE_SD)
+				flash_write_pt = sunxi_sprite_phywrite;
+			else
+				flash_write_pt = sunxi_sprite_write;
+
+			ret = flash_write_pt((u32)(gpt_head->last_usable_lba + 1),
+					(GPT_BUFF_SIZE - GPT_ENTRY_OFFSET) / 512,
+					gpt_buf + GPT_ENTRY_OFFSET);
+			if (!ret) {
+				goto __err_end;
+			}
+
+			/* write back-up gpt HEAD */
+			ret = flash_write_pt((u32)gpt_head->my_lba, 1,
+				gpt_buf + GPT_HEAD_OFFSET);
+			if (!ret) {
+				goto __err_end;
+			}
+			pr_msg("write Backup GPT success\n");
+		}
+	}
+	free(buf);
+	return 0;
+__err_end:
+	free(buf);
+	pr_err("update gpt fail\n");
+	return -1;
+}
+
 
 #ifdef CONFIG_OFFLINE_BURN
 static int gpt_fix_flash_size(char *gpt_buf, int storage_type)
@@ -729,26 +916,19 @@ static int gpt_fix_flash_size(char *gpt_buf, int storage_type)
 	char         *gpt_entry_start = NULL;
 	int          i = 0;
 
-	if(storage_type == STORAGE_EMMC || storage_type == STORAGE_EMMC3
-		|| storage_type == STORAGE_SD) {
-		logic_offset = MMC_LOGICAL_OFFSET;
-	} else if(storage_type == STORAGE_NOR) {
-#ifdef CONFIG_SUNXI_FREERTOS
-		logic_offset = CONFIG_SUNXI_FREERTOS_LOGICAL_OFFSET;
-#else
-		logic_offset = CONFIG_SPINOR_LOGICAL_OFFSET;
-#endif
-	} else {
-		logic_offset = 0;
-	}
-	total_sectors = sunxi_flash_size();
+	sunxi_get_logical_offset_param(storage_type, &logic_offset, &total_sectors);
 
 	/*LBA1: fill primary gpt header */
 	gpt_head = (gpt_header *)(gpt_buf + GPT_HEAD_OFFSET);
 	gpt_head->alternate_lba = total_sectors - 1;
 	gpt_head->first_usable_lba += logic_offset;
-	/*1 GPT head + 32 GPT entry*/
-	gpt_head->last_usable_lba = total_sectors - (1 + 32) - 1;
+	if (storage_type == STORAGE_NOR) {
+		/*spinor do not have much space, drop backup gpt to enlarge UDISK*/
+		gpt_head->last_usable_lba = total_sectors - 1;
+	} else {
+		/*room for backup GPT consider "unsable":1 GPT head + 32 GPT entry*/
+		gpt_head->last_usable_lba = total_sectors - (1 + 32) - 1;
+	}
 
 	/* fix entry logic offset*/
 	gpt_entry_start = (gpt_buf + GPT_ENTRY_OFFSET);
@@ -784,8 +964,9 @@ int sunxi_sprite_download_mbr(void *buffer, uint buffer_size)
 	int storage_type = 0;
 	gpt_header *gpt_head  = (gpt_header*)(buffer + GPT_HEAD_OFFSET);
 
-	storage_type = get_boot_storage_type();
-	if(sunxi_flash_init()) {
+	aastorage_type = get_boot_storage_type();
+
+	if ((storage_type == STORAGE_NAND) && (sunxi_flash_init())) {
 		return -1;
 	}
 
@@ -808,7 +989,8 @@ int sunxi_sprite_download_mbr(void *buffer, uint buffer_size)
 		goto __err_end;
 	}
 	/*write to phy addr for kernel use*/
-	if(STORAGE_EMMC == storage_type || STORAGE_EMMC3 == storage_type) {
+	if (STORAGE_EMMC == storage_type || STORAGE_EMMC3 == storage_type
+			|| storage_type == STORAGE_EMMC0) {
 		ret = sunxi_flash_phywrite(0, buffer_size>>9, buffer);
 		if(!ret)
 			goto __err_end;
@@ -816,27 +998,31 @@ int sunxi_sprite_download_mbr(void *buffer, uint buffer_size)
 	printf("write primary GPT success\n");
 	prepare_backup_gpt_header(gpt_head);
 
-	if(STORAGE_EMMC == storage_type || STORAGE_EMMC3 == storage_type
-		|| STORAGE_NOR == storage_type)
+	if (STORAGE_EMMC == storage_type || STORAGE_EMMC3 == storage_type
+		storage_type == STORAGE_EMMC0)
 		flash_write_pt  = sunxi_flash_phywrite;
 	else
 		flash_write_pt  = sunxi_flash_write;
 
-	/* write back-up gpt PTE */
-	ret = flash_write_pt(gpt_head->last_usable_lba + 1,
-		(GPT_BUFF_SIZE-GPT_ENTRY_OFFSET)/512,
-		buffer+GPT_ENTRY_OFFSET);
-	if(!ret) {
-		goto __err_end;
-	}
+	if (STORAGE_NOR == storage_type) {
+		printf("spinor: skip backup GPT\n");
+	} else {
+		/* write back-up gpt PTE */
+		ret = flash_write_pt(gpt_head->last_usable_lba + 1,
+				     (GPT_BUFF_SIZE - GPT_ENTRY_OFFSET) / 512,
+				     buffer + GPT_ENTRY_OFFSET);
+		if (!ret) {
+			goto __err_end;
+		}
 
-	/* write back-up gpt HEAD */
-	ret = flash_write_pt(gpt_head->my_lba, 1,
-		buffer+GPT_HEAD_OFFSET);
-	if(!ret) {
-		goto __err_end;
+		/* write back-up gpt HEAD */
+		ret = flash_write_pt(gpt_head->my_lba, 1,
+				     buffer + GPT_HEAD_OFFSET);
+		if (!ret) {
+			goto __err_end;
+		}
+		printf("write Backup GPT success\n");
 	}
-	printf("write Backup GPT success\n");
 	return 0;
 __err_end:
 	return -1;

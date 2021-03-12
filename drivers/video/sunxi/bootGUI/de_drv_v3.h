@@ -58,7 +58,6 @@ static inline int _switch_device_config(int sel, struct disp_device_config *conf
 	switch (config->type) {
 	case DISP_OUTPUT_TYPE_HDMI:
 	case DISP_OUTPUT_TYPE_TV:
-	case DISP_OUTPUT_TYPE_LCD:
 	case DISP_OUTPUT_TYPE_VGA:
 #ifdef ENABLE_HDMI_CLK_PREPARE
 		if (config->type == DISP_OUTPUT_TYPE_HDMI)
@@ -67,6 +66,12 @@ static inline int _switch_device_config(int sel, struct disp_device_config *conf
 		arg[0] = sel;
 		arg[1] = (unsigned long)config;
 		ret = disp_ioctl(NULL, DISP_DEVICE_SET_CONFIG, (void *)arg);
+		break;
+	case DISP_OUTPUT_TYPE_LCD:
+		arg[0] = sel;
+		arg[1] = config->type;
+		arg[2] = 0;
+		ret = disp_ioctl(NULL, DISP_DEVICE_SWITCH, (void *)arg);
 		break;
 	default:
 		return -1;

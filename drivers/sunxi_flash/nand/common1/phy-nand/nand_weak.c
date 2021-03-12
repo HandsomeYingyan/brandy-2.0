@@ -277,7 +277,7 @@ int __attribute__((weak)) rawnand_physic_bad_block_mark(unsigned int chip, unsig
 	return -1;
 }
 
-int __attribute__((weak)) rawnand_physic_block_copy(unsigned int chip_s, unsigned int block_s, unsigned int chip_d, unsigned int block_d)
+int __attribute__((weak)) rawnand_physic_block_copy(unsigned int chip_s, unsigned int block_s, unsigned int chip_d, unsigned int block_d, unsigned int copy_nums)
 {
 	return -1;
 }

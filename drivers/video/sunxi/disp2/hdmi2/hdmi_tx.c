@@ -278,9 +278,14 @@ static void hdmi_sys_source_reset(void)
 }
 #endif
 
+#ifdef CONFIG_HDMI2_FREQ_SPREAD_SPECTRUM
+extern u32 hdmi_set_spread_spectrum(u32 pixel_clk);
+#endif
+
 static s32 hdmi_enable(void)
 {
 	s32 ret = 0;
+	struct clk *clk_parent = NULL;
 
 	LOG_TRACE();
 
@@ -289,6 +294,19 @@ static s32 hdmi_enable(void)
 		mutex_unlock(&hdmi_drv->ctrl_mutex);
 		return 0;
 	}
+
+	clk_parent = clk_get(NULL, "tcon_tv");
+	if (clk_parent == NULL || IS_ERR(clk_parent))
+		printf("tcon_tv clk get failed\n");
+	else
+		clk_set_rate(hdmi_drv->hdmi_clk,
+			clk_get_rate(clk_parent));
+
+#ifdef CONFIG_HDMI2_FREQ_SPREAD_SPECTRUM
+	hdmi_set_spread_spectrum(
+		clk_get_rate(hdmi_drv->hdmi_clk));
+#endif
+
 	if (/*hpd_state &&*/ !video_on)
 		ret = hdmi_enable_core();
 #if defined(__LINUX_PLAT__)

@@ -199,7 +199,6 @@ static void ir_detect_overtime(void *p)
 
 int check_ir_boot_recovery(void)
 {
-	pr_notice("line:%d func:%s start \n", __LINE__, __func__);
 	if (ir_sys_cfg())
 		return 0;
 
@@ -213,7 +212,6 @@ int check_ir_boot_recovery(void)
 	ir_timer_t.function   = ir_detect_overtime;
 	init_timer(&ir_timer_t);
 	add_timer(&ir_timer_t);
-	pr_notice("line:%d func:%s end \n", __LINE__, __func__);
 	return 0;
 }
 
@@ -256,9 +254,8 @@ unsigned long ir_packet_handle(struct ir_raw_buffer *ir_raw)
 		ir_detect_count++;
 	}
 
-	if (ir_detect_count == ir_press_times) {
-		del_timer(&ir_timer_t);
-		ir_disable();
+	if ((ir_detect_count == ir_press_times)
+		&& (gd->ir_detect_status != IR_DETECT_OK)) {
 		gd->ir_detect_status = IR_DETECT_OK;
 #if 1
 		ret = script_parser_fetch(FDT_IR_BOOT_SETTINGS_PATH, "ir_work_mode",
@@ -288,7 +285,7 @@ unsigned long ir_packet_handle(struct ir_raw_buffer *ir_raw)
 			}
 		}
 	}
-	pr_notice("line:%d gd->key_pressd_value=0x%x\n", __LINE__,
+	pr_notice("line:%d gd->key_pressd_value=0x%lx\n", __LINE__,
 		  gd->key_pressd_value);
 	return 0;
 }

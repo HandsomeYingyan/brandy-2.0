@@ -20,7 +20,6 @@
 
 #define MBR_DATA_SIZE
 
-#define ENABLE_CRC_MAGIC 0x63726365 //crce
 //==========================================================
 
 struct _nand_phy_partition;
